@@ -1,0 +1,482 @@
+# PsyClinicalMind Frontend - Cursor Rules
+# Multi-Tenant AI Mental Health Platform Frontend
+
+
+
+## 🎯 Project Overview
+PsyClinicalMind Frontend is a modern React/TypeScript application for clinical psychologists, featuring AI-powered mental health assistance, crisis detection, and professional healthcare workflows. Built with Vite, Tailwind CSS, and enterprise-grade architecture.
+
+- You are an expert in TypeScript, Node.js, Next.js App Router, React, Shadcn UI, and Tailwind and Framer Motion.
+
+- Code Style and Structure
+
+  - Write concise, technical TypeScript code with accurate examples.
+  - Use functional and declarative programming patterns; avoid classes.
+  - Prefer iteration and modularization over code duplication.
+  - Use descriptive variable names with auxiliary verbs (e.g., isLoading, hasError).
+  - Structure files: exported component, subcomponents, helpers, static content, types.
+
+- Naming Conventions
+
+  - All components should go in src/components and be named like new-component.tsx
+  - Use lowercase with dashes for directories (e.g., components/auth-wizard).
+  - Favor named exports for components.
+
+- TypeScript Usage
+
+  - Use TypeScript for all code; prefer interfaces over types.
+  - Avoid enums; use maps instead.
+  - Use functional components with TypeScript interfaces.
+
+- Syntax and Formatting
+
+  - Use the "function" keyword for pure functions.
+  - Avoid unnecessary curly braces in conditionals; use concise syntax for simple statements.
+  - Use declarative JSX.
+
+- UI and Styling
+
+  - Use Shadcn UI, and Tailwind for components and styling.
+  - Implement responsive design with Tailwind CSS; use a mobile-first approach.
+
+- Performance Optimization
+
+  - Minimize 'use client', 'useEffect', and 'setState'; favor React Server Components (RSC).
+  - Wrap client components in Suspense with fallback.
+  - Use dynamic loading for non-critical components.
+  - Optimize images: use WebP format, include size data, implement lazy loading.
+
+- Key Conventions
+
+  - Use 'nuqs' for URL search parameter state management.
+  - Optimize Web Vitals (LCP, CLS, FID).
+  - Limit 'use client':
+    - Favor server components and Next.js SSR.
+    - Use only for Web API access in small components.
+    - Avoid for data fetching or state management.
+  - Follow Next.js docs for Data Fetching, Rendering, and Routing.
+  - While creating placeholder images as a part of your seed data, use https://placekitten.com/
+  - Place both the /app and /components folders under a /src directory. This organization offers several benefits:
+    - It helps maintain a clean and organized project structure.
+    - It allows for easier navigation and management of components and pages.
+    - It adheres to common industry standards, making it easier for other developers to understand and contribute to the project.
+    - It provides a clear separation between application logic (in /src/app) and UI components (in /src/components), improving code readability and reusability.
+    - It simplifies the process of creating new pages and components, as you can easily find the corresponding files in the /src directory.
+    - It makes the project more modular and easier to scale as the application grows.
+    - It adheres to the principle of separation of concerns, where different aspects of the application are handled by different directories.
+
+## Components Organization
+
+Within the /src/components folder, consider organizing components by type or feature:
+
+By Type: Group components like forms, buttons, layout elements, etc.
+
+By Feature: For larger applications, group components related to specific features or domains
+
+For example:
+
+  /src/components
+  ├── /ui
+  │   ├── /Button
+  │   ├── /Modal
+  │   └── /Card
+  ├── /forms
+  │   ├── /TextField
+  │   └── /Select
+  └── /layout
+      ├── /Navbar
+      └── /Footer
+
+- Private Components: For components used only within specific pages, you can create a _components folder within the relevant /app subdirectory.
+
+- Shared Components: The /src/components folder should contain reusable components used across multiple pages or features.
+
+- Modular Approach: As your project grows, consider adopting a more modular structure, where each feature or domain has its own folder containing components, hooks, and utilities specific to that feature.
+
+## 🏗 Architecture Patterns
+
+### Multi-Tenant Frontend
+- **Tenant Context**: Use `TenantContext` for tenant-specific configurations
+- **Role-based UI**: Different interfaces for Admin, Clinical Director, Psychologist, Therapist, Intern
+- **Tenant Switching**: Seamless organization switching with context preservation
+- **Feature Flags**: Tenant-specific feature enablement
+
+### Component Architecture
+- **Atomic Design**: Components organized by complexity (atoms → molecules → organisms → pages)
+- **Feature-based Structure**: Components grouped by feature (auth, dashboard, ai, crisis, patients)
+- **Layout Components**: Reusable layout patterns (AuthLayout, DashboardLayout)
+- **Context Providers**: Global state management with React Context
+
+### State Management
+- **React Context**: For global state (Auth, Tenant, Theme)
+- **React Query**: For server state management and caching
+- **Zustand**: For complex client state (if needed)
+- **Local State**: useState/useReducer for component-specific state
+
+## 🎨 Design System & Styling
+
+### Tailwind CSS Configuration
+- **Custom Color Palette**: Primary (#667eea), Secondary (#764ba2), Clinical grays
+- **Healthcare Colors**: Crisis severity (low, moderate, high, critical)
+- **AI Model Colors**: Claude (violet), GPT (emerald), Local (indigo)
+- **Responsive Design**: Mobile-first approach with breakpoint system
+
+### Component Styling
+- **Utility Classes**: Prefer Tailwind utility classes over custom CSS
+- **Component Variants**: Use clsx/tailwind-merge for conditional styling
+- **Design Tokens**: Use CSS custom properties for consistent theming
+- **Accessibility**: WCAG 2.1 AA compliance for healthcare environments
+
+### Healthcare UI Patterns
+- **Clinical Cards**: Professional medical card styling with left border accents
+- **Crisis Indicators**: Visual severity indicators with appropriate colors
+- **Status Badges**: Consistent status styling across the application
+- **Loading States**: Professional loading indicators for clinical workflows
+
+## 🔐 Authentication & Security
+
+### Authentication Flow
+- **JWT Tokens**: Secure token management with automatic refresh
+- **Protected Routes**: Role-based route protection with guards
+- **Session Management**: Secure session handling with automatic logout
+- **Multi-tenant Auth**: Tenant context in authentication flow
+
+### Security Best Practices
+- **Input Validation**: Client-side validation with Zod schemas
+- **XSS Prevention**: Sanitized inputs and secure rendering
+- **CSRF Protection**: Token-based CSRF protection
+- **Content Security Policy**: Strict CSP headers for healthcare data
+
+### Healthcare Compliance
+- **DPDP Act 2023**: Indian data protection compliance
+- **Audit Logging**: User action tracking for clinical compliance
+- **Data Encryption**: Client-side encryption for sensitive data
+- **Session Timeout**: Automatic session expiration for security
+
+## 🤖 AI Integration
+
+### AI Assistant Interface
+- **Real-time Chat**: WebSocket-based AI conversation interface
+- **Model Selection**: Manual and automatic AI model routing
+- **Context Awareness**: Patient and session context integration
+- **Response Feedback**: User feedback collection for AI improvement
+
+### Crisis Detection UI
+- **Real-time Alerts**: Immediate crisis detection notifications
+- **Severity Indicators**: Visual crisis level indicators
+- **Intervention Workflows**: Guided crisis response interfaces
+- **Crisis History**: Comprehensive crisis event tracking
+
+### AI Response Components
+- **Message Bubbles**: Professional chat interface for AI responses
+- **Metadata Display**: Token usage, cost, response time information
+- **Model Indicators**: Visual indicators for AI model used
+- **Specialist Context**: Display of AI specialist context applied
+
+## 📱 User Experience
+
+### Healthcare Professional UX
+- **Clinical Workflows**: Streamlined interfaces for clinical tasks
+- **Patient Management**: Comprehensive patient record interfaces
+- **Session Management**: Professional therapy session tools
+- **Analytics Dashboard**: Clinical insights and performance metrics
+
+### Responsive Design
+- **Mobile-First**: Optimized for mobile clinical use
+- **Tablet Support**: Touch-optimized interfaces for tablets
+- **Desktop Experience**: Full-featured desktop interfaces
+- **Progressive Web App**: Offline capability for critical functions
+
+### Accessibility
+- **WCAG 2.1 AA**: Full accessibility compliance
+- **Screen Reader Support**: Comprehensive ARIA labels
+- **Keyboard Navigation**: Full keyboard accessibility
+- **Color Contrast**: High contrast for clinical environments
+
+## 🔧 Development Patterns
+
+### React Best Practices
+- **Functional Components**: Use functional components with hooks
+- **TypeScript**: Strict TypeScript with comprehensive type definitions
+- **Custom Hooks**: Extract reusable logic into custom hooks
+- **Error Boundaries**: Comprehensive error handling with boundaries
+
+### Code Organization
+```
+src/
+├── components/        # Reusable components
+│   ├── common/       # Generic components
+│   ├── auth/         # Authentication components
+│   ├── dashboard/    # Dashboard components
+│   ├── ai/          # AI assistant components
+│   ├── crisis/      # Crisis management
+│   └── layout/      # Layout components
+├── pages/           # Page components
+├── hooks/           # Custom React hooks
+├── services/        # API services
+├── context/         # React context providers
+├── types/           # TypeScript definitions
+├── utils/           # Utility functions
+└── styles/          # Global styles
+```
+
+### API Integration
+- **Axios Client**: Centralized API client with interceptors
+- **React Query**: Server state management and caching
+- **Error Handling**: Comprehensive error handling and user feedback
+- **Loading States**: Professional loading indicators
+
+## 🧪 Testing & Quality
+
+### Testing Strategy
+- **Unit Tests**: Component testing with React Testing Library
+- **Integration Tests**: API integration testing
+- **E2E Tests**: Critical user journey testing
+- **Accessibility Tests**: Automated accessibility testing
+
+### Code Quality
+- **ESLint**: Strict linting rules for React/TypeScript
+- **Prettier**: Consistent code formatting
+- **TypeScript**: Strict type checking
+- **Pre-commit Hooks**: Automated quality checks
+
+### Performance
+- **Code Splitting**: Route-based and component-based splitting
+- **Lazy Loading**: Dynamic imports for non-critical components
+- **Bundle Optimization**: Optimized bundle sizes with Vite
+- **Image Optimization**: WebP support and lazy loading
+
+## 🚀 Build & Deployment
+
+### Vite Configuration
+- **Fast Development**: Hot module replacement and fast builds
+- **Path Aliases**: Clean import paths with alias configuration
+- **Environment Variables**: Secure environment variable handling
+- **Build Optimization**: Optimized production builds
+
+### Deployment Strategy
+- **Static Hosting**: Optimized for static file hosting
+- **CDN Integration**: Global content delivery
+- **Environment Configuration**: Environment-specific builds
+- **Health Checks**: Application health monitoring
+
+## 🏥 Healthcare Specific Features
+
+### Clinical Interface Design
+- **Professional Appearance**: Healthcare-grade UI design
+- **Clinical Workflows**: Streamlined clinical task interfaces
+- **Patient Safety**: Clear crisis and safety indicators
+- **Clinical Documentation**: Professional documentation tools
+
+### Indian Market Features
+- **Multi-language Support**: Hindi, Tamil, Telugu, Bengali support
+- **Indian Currency**: INR display and formatting
+- **Local Timezone**: Asia/Kolkata timezone handling
+- **Cultural Sensitivity**: Culturally appropriate interface design
+
+### Crisis Management UI
+- **Emergency Protocols**: Clear emergency response interfaces
+- **Crisis Escalation**: Visual escalation workflows
+- **Clinical Team Coordination**: Team communication interfaces
+- **Follow-up Scheduling**: Automated follow-up management
+
+## 📊 Analytics & Monitoring
+
+### User Analytics
+- **Usage Tracking**: Feature usage analytics
+- **Performance Monitoring**: Application performance metrics
+- **Error Tracking**: Comprehensive error monitoring
+- **User Feedback**: In-app feedback collection
+
+### Clinical Analytics
+- **Session Analytics**: Therapy session insights
+- **Patient Progress**: Patient outcome tracking
+- **AI Usage**: AI assistant usage analytics
+- **Crisis Metrics**: Crisis event analytics
+
+## 🔄 State Management
+
+### Context Providers
+```typescript
+// Authentication Context
+const { user, login, logout } = useAuth();
+
+// Tenant Context  
+const { currentTenant, switchTenant } = useTenant();
+
+// Theme Context
+const { colors, gradients } = useTheme();
+```
+
+### React Query Patterns
+```typescript
+// Data fetching with caching
+const { data, isLoading, error } = useQuery(['patients'], fetchPatients);
+
+// Mutations with optimistic updates
+const mutation = useMutation(updatePatient, {
+  onSuccess: () => queryClient.invalidateQueries(['patients'])
+});
+```
+
+### Form Management
+```typescript
+// React Hook Form with Zod validation
+const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  resolver: zodResolver(schema)
+});
+```
+
+## 🎨 Component Patterns
+
+### Common Component Structure
+```typescript
+interface ComponentProps {
+  // Props with comprehensive types
+}
+
+const Component: React.FC<ComponentProps> = ({ prop1, prop2 }) => {
+  // Custom hooks for logic
+  const { data, isLoading } = useCustomHook();
+  
+  // Event handlers
+  const handleAction = useCallback(() => {
+    // Action logic
+  }, []);
+  
+  // Render with proper loading/error states
+  if (isLoading) return <LoadingSpinner />;
+  if (error) return <ErrorMessage error={error} />;
+  
+  return (
+    <div className="component-wrapper">
+      {/* Component content */}
+    </div>
+  );
+};
+```
+
+### Styling Patterns
+```typescript
+// Conditional styling with clsx
+const buttonClasses = clsx(
+  'base-button',
+  variant === 'primary' && 'btn-primary',
+  size === 'large' && 'btn-large',
+  disabled && 'btn-disabled'
+);
+
+// Tailwind with custom classes
+<div className="clinical-card crisis-indicator">
+  {/* Content */}
+</div>
+```
+
+## 🔍 Code Review Guidelines
+
+### Security Review
+- **Authentication**: Proper auth checks and token handling
+- **Data Validation**: Client-side validation with Zod
+- **XSS Prevention**: Sanitized inputs and secure rendering
+- **Access Control**: Role-based access control implementation
+
+### Healthcare Review
+- **Clinical Accuracy**: Verify clinical information accuracy
+- **Patient Safety**: Ensure crisis detection reliability
+- **Compliance**: DPDP Act 2023 compliance verification
+- **Accessibility**: Healthcare accessibility standards
+
+### Performance Review
+- **Bundle Size**: Monitor bundle size and optimization
+- **Loading Performance**: Optimize loading times
+- **Memory Usage**: Prevent memory leaks
+- **User Experience**: Smooth interactions and feedback
+
+## 🚀 Quick Reference
+
+### Common Patterns
+```typescript
+// API call with error handling
+const { data, isLoading, error } = useQuery(['key'], async () => {
+  try {
+    const response = await apiClient.get('/endpoint');
+    return response.data;
+  } catch (error) {
+    toast.error('Failed to fetch data');
+    throw error;
+  }
+});
+
+// Form submission
+const onSubmit = async (data: FormData) => {
+  try {
+    await mutation.mutateAsync(data);
+    toast.success('Success!');
+  } catch (error) {
+    toast.error('Failed to submit');
+  }
+};
+
+// Conditional rendering
+{user?.role === 'admin' && <AdminPanel />}
+{isLoading ? <LoadingSpinner /> : <Content />}
+```
+
+### Styling Patterns
+```typescript
+// Responsive design
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+// Conditional styling
+<div className={clsx(
+  'card',
+  isActive && 'card-active',
+  variant === 'crisis' && 'card-crisis'
+)}>
+
+// Healthcare colors
+<div className="bg-crisis-critical text-white">
+  Critical Alert
+</div>
+```
+
+### Error Handling
+```typescript
+// Error boundary
+<ErrorBoundary fallback={<ErrorFallback />}>
+  <Component />
+</ErrorBoundary>
+
+// API error handling
+if (error) {
+  return <ErrorMessage 
+    title="Failed to load data"
+    message={error.message}
+    onRetry={() => refetch()}
+  />;
+}
+```
+
+---
+
+## 🎯 Competitive Advantages
+
+### vs. Wysa (Consumer App)
+✅ **Professional clinical interface**
+✅ **Multi-tenant architecture**
+✅ **Advanced AI routing** (Claude 3.5 + GPT-4O)
+✅ **Crisis management workflows**
+✅ **Clinical documentation tools**
+✅ **Healthcare compliance**
+✅ **Professional user roles**
+
+### vs. Generic Healthcare Apps
+✅ **AI-native design**
+✅ **Real-time crisis detection**
+✅ **Cost-transparent AI usage**
+✅ **Indian market optimization**
+✅ **Professional clinical workflows**
+
+---
+
+**Remember**: This is a healthcare platform serving clinical psychologists. Always prioritize patient safety, clinical accuracy, and professional user experience over development speed. Ensure all interfaces meet healthcare accessibility standards and maintain the highest level of security for sensitive clinical data.

@@ -1,0 +1,376 @@
+# ClinicalMind Backend - Cursor Rules
+# Multi-Tenant AI Mental Health Platform
+
+## 🎯 Project Overview
+ClinicalMind is a production-ready, multi-tenant mental health platform with AI integration (Claude 3.5 + GPT-4O), crisis detection, and healthcare compliance. Built with FastAPI, PostgreSQL, and enterprise-grade architecture.
+
+## 🏗 Architecture Patterns
+
+### Multi-Tenancy
+- **Schema Isolation**: Each tenant gets separate PostgreSQL schema
+- **Tenant Context**: Always include tenant_id in database operations
+- **Role-based Access**: Admin, Clinical Director, Psychologist, Therapist, Intern roles
+- **Usage Tracking**: Monitor AI costs and usage per tenant
+
+### Database Models
+- Use `TenantBase` for tenant-scoped models
+- Use `Base` for public schema models (Tenant, User)
+- Include `tenant_id` column in all tenant models
+- Use UUID primary keys with `uuid.uuid4()`
+- Include `created_at`, `updated_at`, `is_active` in all models
+- Use PostgreSQL-specific types (UUID, JSONB, ARRAY)
+
+### API Structure
+- Versioned APIs: `/api/v1/`
+- Modular routers: auth, patients, sessions, crisis, analytics
+- Consistent error handling with HTTPException
+- Comprehensive request/response models with Pydantic
+- Background tasks for heavy operations
+
+## 🔐 Security & Authentication
+
+### Authentication Patterns
+- JWT tokens with tenant context
+- Role-based permissions with `require_permission` decorator
+- Public endpoints in `PUBLIC_ENDPOINTS` list
+- Password hashing with bcrypt
+- Token refresh mechanism
+
+### Healthcare Compliance
+- DPDP Act 2023 compliance
+- Audit logging for all clinical operations
+- Data encryption at rest and in transit
+- HIPAA-equivalent Indian standards
+- Patient data isolation per tenant
+
+## 🤖 AI Integration
+
+### Model Router
+- Intelligent routing between Claude 3.5 and GPT-4O
+- Specialist contexts: anxiety, trauma, relationship, CBT
+- Cost tracking per request
+- Crisis detection integration
+- Response caching and optimization
+
+### Crisis Detection
+- Multi-layer assessment (keywords, patterns, ML)
+- Real-time escalation protocols
+- Clinical intervention recommendations
+- Crisis history tracking
+
+## 📝 Code Standards
+
+### Python Patterns
+- Async/await for all I/O operations
+- Type hints for all functions
+- Comprehensive error handling
+- Structured logging with context
+- Environment-based configuration
+
+### FastAPI Best Practices
+- Dependency injection for database sessions
+- Pydantic models for validation
+- Background tasks for heavy operations
+- Middleware for cross-cutting concerns
+- OpenAPI documentation
+- Use functional components (plain functions) and Pydantic models for input validation and response schemas.
+- Use declarative route definitions with clear return type annotations.
+- Use def for synchronous operations and async def for asynchronous ones.
+- Minimize @app.on_event("startup") and @app.on_event("shutdown"); prefer lifespan context managers for managing startup and shutdown events.
+- Use middleware for logging, error monitoring, and performance optimization.
+- Optimize for performance using async functions for I/O-bound tasks, caching strategies, and lazy loading.
+- Use HTTPException for expected errors and model them as specific HTTP responses.
+- Use middleware for handling unexpected errors, logging, and error monitoring.
+- Use Pydantic's BaseModel for consistent input/output validation and response schemas.Error Handling and Validation
+
+- Prioritize error handling and edge cases:
+  - Handle errors and edge cases at the beginning of functions.
+  - Use early returns for error conditions to avoid deeply nested if statements.
+  - Place the happy path last in the function for improved readability.
+  - Avoid unnecessary else statements; use the if-return pattern instead.
+  - Use guard clauses to handle preconditions and invalid states early.
+  - Implement proper error logging and user-friendly error messages.
+  - Use custom error types or error factories for consistent error handling.
+
+
+Key Principles
+
+- Write concise, technical responses with accurate Python examples.
+- Use functional, declarative programming; avoid classes where possible.
+- Prefer iteration and modularization over code duplication.
+- Use descriptive variable names with auxiliary verbs (e.g., is_active, has_permission).
+- Use lowercase with underscores for directories and files (e.g., routers/user_routes.py).
+- Favor named exports for routes and utility functions.
+- Use the Receive an Object, Return an Object (RORO) pattern.
+
+Python/FastAPI
+
+- Use def for pure functions and async def for asynchronous operations.
+- Use type hints for all function signatures. Prefer Pydantic models over raw dictionaries for input validation.
+- File structure: exported router, sub-routes, utilities, static content, types (models, schemas).
+- Avoid unnecessary curly braces in conditional statements.
+- For single-line statements in conditionals, omit curly braces.
+- Use concise, one-line syntax for simple conditional statements (e.g., if condition: do_something()).
+
+
+# Coding Guidelines
+
+## 1. Pythonic Practices
+
+- **Elegance and Readability:** Strive for elegant and Pythonic code that is easy to understand and maintain.
+- **PEP 8 Compliance:** Adhere to PEP 8 guidelines for code style, with Ruff as the primary linter and formatter.
+- **Explicit over Implicit:** Favor explicit code that clearly communicates its intent over implicit, overly concise code.
+- **Zen of Python:** Keep the Zen of Python in mind when making design decisions.
+
+## 2. Modular Design
+
+- **Single Responsibility Principle:** Each module/file should have a well-defined, single responsibility.
+- **Reusable Components:** Develop reusable functions and classes, favoring composition over inheritance.
+- **Package Structure:** Organize code into logical packages and modules.
+
+## 3. Code Quality
+
+- **Comprehensive Type Annotations:** All functions, methods, and class members must have type annotations, using the most specific types possible.
+- **Detailed Docstrings:** All functions, methods, and classes must have Google-style docstrings, thoroughly explaining their purpose, parameters, return values, and any exceptions raised. Include usage examples where helpful.
+- **Thorough Unit Testing:** Aim for high test coverage (90% or higher) using `pytest`. Test both common cases and edge cases.
+- **Robust Exception Handling:** Use specific exception types, provide informative error messages, and handle exceptions gracefully. Implement custom exception classes when needed. Avoid bare `except` clauses.
+- **Logging:** Employ the `logging` module judiciously to log important events, warnings, and errors.
+
+
+1. **Use Meaningful Names**: Choose descriptive variable, function, and class names.
+2. **Follow PEP 8**: Adhere to the Python Enhancement Proposal 8 style guide for formatting.
+3. **Use Docstrings**: Document functions and classes with docstrings to explain their purpose.
+
+4. **Handle Exceptions**: Use try-except blocks to handle exceptions gracefully.
+5. **Use Virtual Environments**: Isolate project dependencies using virtual environments (e.g., `.venv`).
+6. **Write Tests**: Implement unit tests to ensure code reliability.
+7. **Use Type Hints**: Utilize type hints for better code clarity and type checking.
+
+- 
+### File Organization
+```
+app/
+├── api/v1/           # API routers
+├── core/ai/          # AI services
+├── models/           # Database models
+├── middleware/       # Custom middleware
+├── utils/            # Utilities and helpers
+└── config/           # Configuration
+```
+
+## 🧪 Testing & Quality
+
+### Testing Requirements
+- Unit tests for all business logic
+- Integration tests for API endpoints
+- Database transaction rollback in tests
+- Mock external services (AI APIs)
+- Test crisis detection scenarios
+
+### Code Quality
+- Black formatting
+- Flake8 linting
+- MyPy type checking
+- Comprehensive docstrings
+- Error handling for all edge cases
+
+## 🚀 Performance & Scalability
+
+### Database Optimization
+- Connection pooling
+- Read replicas for analytics
+- Index optimization for tenant queries
+- Query optimization for large datasets
+
+### Caching Strategy
+- Redis for session data
+- AI response caching
+- Database query result caching
+- Tenant configuration caching
+
+## 🔧 Development Workflow
+
+### Environment Setup
+- Docker Compose for local development
+- Environment variables for configuration
+- Separate dev/staging/prod environments
+- Database migrations with Alembic
+
+### API Documentation
+- Comprehensive OpenAPI schemas
+- Example requests/responses
+- Error code documentation
+- Clinical workflow examples
+
+## 🏥 Healthcare Specific
+
+### Clinical Data Models
+- Patient demographics and history
+- Session notes and progress tracking
+- Treatment plans and interventions
+- Crisis assessments and responses
+- Billing and insurance information
+
+### Indian Market Features
+- Multi-language support (Hindi, Tamil, Telugu, Bengali)
+- Indian currency (INR) and timezone (Asia/Kolkata)
+- Government dataset integration (NIMHANS, Tele-MANAS)
+- Indian regulatory compliance
+
+## 📊 Monitoring & Analytics
+
+### Logging
+- Structured logging with correlation IDs
+- Audit trails for clinical operations
+- Performance metrics tracking
+- Error monitoring and alerting
+
+### Analytics
+- Usage analytics per tenant
+- AI cost tracking and optimization
+- Clinical outcome metrics
+- System performance monitoring
+
+## 🚨 Crisis Management
+
+### Crisis Detection
+- Real-time text analysis
+- Risk scoring algorithms
+- Escalation protocols
+- Clinical intervention workflows
+
+### Emergency Response
+- Immediate notification systems
+- Crisis documentation
+- Follow-up scheduling
+- Clinical team coordination
+
+## 💰 Billing & Usage
+
+### Cost Tracking
+- AI API usage per request
+- Token consumption monitoring
+- Cost allocation per tenant
+- Usage limit enforcement
+
+### Subscription Plans
+- Trial: 30 days, 2 users, 10 patients, 100 AI requests
+- Basic: ₹2,999/month, 5 users, 100 patients, 1,000 AI requests
+- Professional: ₹7,999/month, 15 users, 500 patients, 5,000 AI requests
+- Enterprise: ₹19,999/month, 100 users, 2,000 patients, 25,000 AI requests
+
+## 🔄 Deployment & Operations
+
+### Docker Configuration
+- Multi-stage builds for optimization
+- Health checks for all services
+- Environment-specific configurations
+- Resource limits and monitoring
+
+### Production Considerations
+- SSL/TLS encryption
+- Rate limiting and DDoS protection
+- Database backup and recovery
+- Disaster recovery procedures
+
+## 📚 Documentation Standards
+
+### Code Documentation
+- Module-level docstrings with purpose
+- Function docstrings with parameters and returns
+- Complex algorithm explanations
+- API endpoint documentation
+
+### Clinical Documentation
+- DSM-5 and ICD-11 compliance
+- Evidence-based intervention protocols
+- Clinical decision support documentation
+- Regulatory compliance notes
+
+## 🎯 Competitive Positioning
+
+### vs. Wysa (Consumer App)
+- B2B focus vs. B2C
+- Multi-tenant architecture
+- Professional clinical workflows
+- Advanced AI routing
+- Crisis management protocols
+
+### Key Differentiators
+- Real-time session assistance
+- Clinical documentation tools
+- Indian market optimization
+- Healthcare compliance
+- Professional user roles
+
+## 🔍 Code Review Guidelines
+
+### Security Review
+- Authentication and authorization
+- Data validation and sanitization
+- SQL injection prevention
+- XSS and CSRF protection
+
+### Clinical Review
+- Patient data protection
+- Clinical accuracy of AI responses
+- Crisis detection reliability
+- Regulatory compliance
+
+### Performance Review
+- Database query optimization
+- API response times
+- Resource usage efficiency
+- Scalability considerations
+
+## 🚀 Quick Reference
+
+### Common Patterns
+```python
+# Tenant context in database operations
+async def get_patients(tenant_id: UUID, db: AsyncSession):
+    return await db.execute(
+        select(Patient).where(Patient.tenant_id == tenant_id)
+    )
+
+# AI model routing
+response = await model_router.generate_response(
+    query=query,
+    context={"session_type": "therapy", "patient_id": patient_id}
+)
+
+# Crisis detection
+assessment = crisis_detector.comprehensive_assessment(text)
+if assessment.crisis_level == CrisisLevel.CRITICAL:
+    await escalate_crisis(assessment)
+```
+
+### Error Handling
+```python
+try:
+    # Operation
+    pass
+except DatabaseError as e:
+    logger.error(f"Database error: {e}")
+    raise HTTPException(status_code=500, detail="Database error")
+except AIAPIError as e:
+    logger.error(f"AI API error: {e}")
+    raise HTTPException(status_code=503, detail="AI service unavailable")
+```
+
+### Logging
+```python
+structured_logger.info(
+    "Patient session completed",
+    extra={
+        "patient_id": patient_id,
+        "session_id": session_id,
+        "duration_minutes": duration,
+        "ai_requests": ai_request_count
+    }
+)
+```
+
+---
+
+**Remember**: This is a healthcare platform handling sensitive clinical data. Always prioritize security, compliance, and clinical accuracy over development speed.
