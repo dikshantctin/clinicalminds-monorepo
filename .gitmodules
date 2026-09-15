@@ -1,0 +1,9 @@
+[submodule "backend"]
+	path = backend
+	url = https://github.com/dikshantctin/clinicalminds-backend.git
+[submodule "frontend"]
+	path = frontend
+	url = https://github.com/dikshantctin/clinicalminds-frontend.git
+[submodule "deidentification-service"]
+	path = deidentification-service
+	url = https://github.com/dikshantctin/clinicalminds-deidentification.git

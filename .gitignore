@@ -1,0 +1,165 @@
+# Python
+*.py[cod]
+*$py.class
+__pycache__/
+*.so
+*.egg
+*.egg-info/
+.Python
+.installed.cfg
+
+# Virtual Environments
+venv/
+venv-*/
+env/
+ENV/
+.venv/
+.venv*/
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Package files
+*.whl
+*.tar.gz
+package-lock.json
+
+# ML Models and Data (LARGE FILES)
+models/
+*.pth
+*.bin
+*.h5
+*.pkl
+*.pickle
+*.safetensors
+*.onnx
+*.pt
+*.ckpt
+*.model
+*.pb
+
+# Medical NLP Models
+*_med7_*
+*_clinical_*
+*_biobert_*
+*_muril_*
+
+# HuggingFace cache
+.cache/
+transformers/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs and temporary files
+logs/
+*.log
+*.out
+*.err
+
+# Data directories
+data/
+uploads/
+notebooks/
+*.ipynb_checkpoints/
+.ipynb_checkpoints/
+
+# IDE and Editor files
+.vscode/
+.idea/
+.cursor/
+.claude/
+.specstory/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files (keep template, ignore actual)
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.template
+
+# Test files (optional - uncomment if needed)
+# test_*.py
+# *_test.py
+# test/
+# tests/__pycache__/
+
+# Build outputs
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff
+.ruff_cache/
+
+# Frontend build
+dist/
+build/
+.cache/
+.parcel-cache/
+
+# Code review graph (optional - can be regenerated)
+.code-review-graph/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Git files
+*.orig
+
+# MCP config (if contains sensitive data)
+.mcp.json
+.opencode.json
+
+# Custom rules files (IDE-specific)
+.cursorrules
+.windsurfrules
+
+# Large test files
+msg91test/node_modules/
