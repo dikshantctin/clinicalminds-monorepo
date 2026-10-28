@@ -11,9 +11,10 @@ const TEST_PHONE = '+919876543210';
 const haveSecret = Boolean(RAZORPAY.keyId && RAZORPAY.keySecret);
 const NO_GATEWAY = 'the demo clinic has no Razorpay account connected — connect one in Settings → Payments (or run backend/scripts/connect_demo_razorpay.py)';
 
-const dayAfterTomorrow = () => {
+// a dedicated day so this browser booking never contends with the api payment specs (day+3) or booking/journey (day+2)
+const bookingDate = () => {
   const d = new Date();
-  d.setDate(d.getDate() + 2);
+  d.setDate(d.getDate() + 4);
   return d.toISOString().slice(0, 10);
 };
 
@@ -76,7 +77,7 @@ test.describe('public booking pays the clinic', () => {
     await page.goto(`/book/${auth.firmCode}`);
     await page.getByTestId(`service-${service.id}`).click();
     await page.getByRole('button', { name: /Jane Doe/ }).click();
-    await page.getByTestId('booking-date').fill(dayAfterTomorrow());
+    await page.getByTestId('booking-date').fill(bookingDate());
     const slotButtons = page.getByTestId('booking-slots').getByRole('button');
     await expect(slotButtons.first()).toBeVisible({ timeout: 15_000 });
     await slotButtons.last().click();

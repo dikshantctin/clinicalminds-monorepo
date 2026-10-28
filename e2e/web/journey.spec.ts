@@ -14,7 +14,10 @@ import { AddPatientPage } from '../src/pages/patients.page';
  */
 test.describe.configure({ mode: 'serial' });
 
-const TEST_PHONE = '+919876543210'; // test-listed: the booking page accepts it without the phone.email round-trip
+// The journey is the only spec that looks a session up by PATIENT NAME, and the public booking finds-or-creates
+// the patient by phone (newest wins). So it uses the SECOND allow-listed test phone exclusively; every other
+// booking spec shares +919876543210 but keys off the session id, so their cross-attachment is harmless.
+const TEST_PHONE = '+919876543211'; // test-listed: the booking page accepts it without the phone.email round-trip
 const THERAPIST = { email: 'therapist.jane@democlinic.com', password: 'Password123!', name: 'Jane Doe' };
 
 const run = uniq('Journey'); // patient first name + service prefix for this run
