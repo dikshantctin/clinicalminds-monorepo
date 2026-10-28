@@ -39,6 +39,7 @@ export default async function globalSetup(): Promise<void> {
         const user = { ...body.user, tenant_id: tenantId };
         process.env.E2E_TOKEN = body.access_token;
         process.env.E2E_TENANT_ID = tenantId;
+        process.env.E2E_FIRM_CODE = body.tenant?.firm_code ?? '';
         process.env.E2E_USER = JSON.stringify(user);
         process.env.E2E_AUTH_OK = '1';
         origins.push({

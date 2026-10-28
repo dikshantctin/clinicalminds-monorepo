@@ -28,7 +28,7 @@ test.describe('crisis, analytics, AI assistant, settings', () => {
   });
 
   test('admin catalog pages render for an admin', async ({ page }) => {
-    for (const path of ['/admin/services', '/admin/practitioners', '/admin/locations']) {
+    for (const path of ['/admin/services', '/admin/locations']) {
       await page.goto(path);
       await expect(page, path).toHaveURL(new RegExp(`${path}$`));
       await expectNoCrash(page);

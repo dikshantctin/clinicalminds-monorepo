@@ -88,8 +88,8 @@ Onboarding writes users to both layers with the same user id.
 ### Backend Structure (`backend/`)
 ```
 app/
-├── api/v1/              # Routers: auth, otp, onboarding, patients, sessions, schedules, crisis, analytics,
-│                        #   tenants, catalog, availability, booking, appointments, teams, kanban, permissions
+├── api/v1/              # Routers: auth, otp, onboarding, verification, public_booking, patients, sessions,
+│                        #   schedules, crisis, analytics, tenants, catalog, teams, kanban (permissions: unmounted)
 ├── core/ai/             # model_router (Claude 3.5 via legacy completions API — needs migration), crisis_detection (sklearn)
 ├── core/multi_database_manager.py  # database-per-tenant
 ├── models/              # platform.py (platform DB), database.py (legacy + tenant), kanban/team/appointment/audit models
@@ -114,6 +114,8 @@ src/
 
 ### Key Features
 - **AI**: routing between Claude 3.5 Sonnet and GPT-4o-mini; crisis detection (multi-layer); per-tenant cost tracking.
+- **Self-booking**: public `/book/<firm_code>` page; a booking is a `therapy_session` (`booked_via="web"`),
+  so it appears on the clinic's and the therapist's schedules. Patient phone proven via phone.email. No payments yet.
 - **Kanban**: boards/tasks/comments/notifications, team assignment, dnd-kit UI, role permissions.
 - **Onboarding + verification**: public business registration (`/onboarding/*`); admin email and phone are
   verified through the phone.email widget (`/verification/*`, hard gate: 403 `verification_required` for

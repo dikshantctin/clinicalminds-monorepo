@@ -4,6 +4,8 @@ import { env } from './env';
 export interface AuthInfo {
   token: string;
   tenantId: string;
+  /** Clinic code: the public booking page is /book/<firmCode> */
+  firmCode: string;
   user: { id: string; email: string; role: string } | null;
 }
 
@@ -20,6 +22,7 @@ export const test = base.extend<Fixtures>({
     await use({
       token: process.env.E2E_TOKEN ?? '',
       tenantId: process.env.E2E_TENANT_ID ?? '',
+      firmCode: process.env.E2E_FIRM_CODE ?? '',
       user: process.env.E2E_USER ? JSON.parse(process.env.E2E_USER) : null,
     });
   },

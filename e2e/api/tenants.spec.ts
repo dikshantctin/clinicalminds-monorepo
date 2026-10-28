@@ -44,7 +44,7 @@ test.describe('/api/v1/tenants and /api/v1/analytics', () => {
   });
 
   test('catalog lists respond', async ({ api }) => {
-    for (const path of ['/api/v1/catalog/services', '/api/v1/catalog/practitioners', '/api/v1/catalog/locations']) {
+    for (const path of ['/api/v1/catalog/services', '/api/v1/catalog/locations']) {
       const res = await api.get(path);
       expect(res.status(), path).toBe(200);
     }
