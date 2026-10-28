@@ -74,15 +74,16 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        kanban, teams, crisis, tenants (+analytics/schedules/catalog), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
                        booking (public self-booking: info, slots, booking → clinic + therapist lists, 409/400),
-                       payments (the clinic's own Razorpay keys: role gate, 422/400 validation, secret never returned;
-                       with E2E_RAZORPAY_* set: Rs 1 booking → order on the clinic's account, slot held, "pending" on the
-                       session, forged signature → 400, free service → no payment, gateway disabled → no payment),
+                       payments (the clinic's own Razorpay keys, read from the demo DB: role gate, 422/400 validation,
+                       secret never returned; once the demo clinic is connected: Rs 1 booking → order on the clinic's
+                       account, slot held, "pending" on the session, forged signature → 400, free service → no payment,
+                       gateway disabled → no payment),
                        followups (missed session → card, idempotent sync, closed cards stay closed), deid
 web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding,
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
-                       payments (with E2E_RAZORPAY_* set: admin connects the keys in Settings → Payments, secret never on
-                       the page; a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
+                       payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
+                       never on the page; a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
                        journey (serial, browser-only clinic day: admin publishes a service, registers a patient,
                        schedules a session → patient books online → therapist starts it → missed session shows on
                        the Follow-up queue; the one API shortcut moves a session into the past)
@@ -92,13 +93,26 @@ Specs create their own data with unique names (`uniq()`) and clean up in `finall
 
 ## Payments (Razorpay test mode)
 
-Each clinic connects its **own** Razorpay account; the suite connects the demo clinic with the
-`E2E_RAZORPAY_KEY_ID` / `E2E_RAZORPAY_KEY_SECRET` pair from `e2e/.env` (test-mode keys only; the payment
-specs skip when unset). The backend must run with `PAYMENTS_ENABLED=true` and a `PAYMENTS_ENCRYPTION_KEY`.
-The actual payment cannot be automated (Razorpay Checkout is a vendor iframe), so after the suite:
+Each clinic connects its **own** Razorpay account; the keys live in the **database** per tenant, not in
+this suite's config. So you connect the demo clinic **once** and every run picks it up — nothing goes in
+`e2e/.env`. The backend must run with `PAYMENTS_ENABLED=true` and a `PAYMENTS_ENCRYPTION_KEY`.
 
-1. `npx playwright test web/payments.spec.ts --headed` stops with Checkout open for a Rs 1 service, or do it by
-   hand: Settings → Payments → connect the keys, give a service price `1`, open `/book/<firm_code>`.
+Connect the demo clinic (either way):
+
+```bash
+# from the backend, with the server running (test-mode keys from the Razorpay dashboard):
+cd ../backend && python scripts/connect_demo_razorpay.py rzp_test_xxxxx <key_secret>
+# …or in the app: log in as the demo admin → Settings → Payments → enter the keys → Connect.
+```
+
+The payment specs read the stored account (only the **public** key id; never the secret) and **skip with a
+reason** until it is connected. `E2E_RAZORPAY_*` is optional and only drives the extra "validate a fresh
+pair" write test.
+
+The actual payment cannot be automated (Razorpay Checkout is a vendor iframe), so to prove a real Rs 1 charge:
+
+1. Give a service price `1`, open `/book/<firm_code>` (or `npx playwright test web/payments.spec.ts --headed`,
+   which stops with Checkout open).
 2. Pay with the UPI id `success@razorpay` or card `4111 1111 1111 1111` (any future expiry, any CVV).
 3. The confirmation shows "Paid ₹1", Sessions shows the "Paid ₹1" badge, and the payment appears in the
    Razorpay test dashboard under the clinic's account.
