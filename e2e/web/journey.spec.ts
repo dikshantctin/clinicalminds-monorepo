@@ -57,7 +57,7 @@ test.describe('end-to-end clinic journey', () => {
     await serviceForm.locator('input[name="name"]').fill(serviceName);
     await serviceForm.locator('textarea[name="description"]').fill('Journey test service');
     await serviceForm.locator('input[name="duration_minutes"]').fill('50');
-    await serviceForm.locator('input[name="price"]').fill('1500');
+    await serviceForm.locator('input[name="price"]').fill('0'); // free intro: the online booking below must not hit the pay step
     await page.getByRole('button', { name: 'Add Service' }).click();
     await expect(page.getByRole('cell', { name: serviceName })).toBeVisible();
 

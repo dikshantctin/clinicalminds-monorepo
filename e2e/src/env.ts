@@ -25,3 +25,9 @@ export const RANDOM_UUID = '00000000-0000-4000-8000-000000000000';
 /** Seeded by backend/scripts/setup_demo_data.py and NOT on the VERIFICATION_TEST_* allowlists:
  *  logs in, but every clinical route answers 403 verification_required until phone.email verification. */
 export const UNVERIFIED_USER = { email: 'intern.unverified@example.com', password: 'Password123!' };
+
+/** Razorpay TEST-mode key pair for the demo clinic (e2e/.env). Payment specs skip when unset. */
+export const RAZORPAY = {
+  keyId: process.env.E2E_RAZORPAY_KEY_ID ?? '',
+  keySecret: process.env.E2E_RAZORPAY_KEY_SECRET ?? '',
+};

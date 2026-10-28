@@ -16,8 +16,9 @@ test.describe('public booking page (/book/<firmCode>)', () => {
   test.use({ storageState: { cookies: [], origins: [] } }); // a patient has no login
 
   test('a patient books a slot; the clinic sees it as booked online', async ({ page, api, auth, browser }) => {
+    // free service: no payment step, whether or not the clinic has connected Razorpay (web/payments.spec.ts covers paid)
     const svc = await api.post('/api/v1/catalog/services', {
-      data: { name: uniq('Walk-in consult'), description: 'e2e', duration_minutes: 50, price: 1200, currency: 'INR' },
+      data: { name: uniq('Walk-in consult'), description: 'e2e', duration_minutes: 50, price: 0, currency: 'INR' },
     });
     expect(svc.status(), await svc.text()).toBe(201);
     const service = await svc.json();

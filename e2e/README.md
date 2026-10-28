@@ -74,16 +74,37 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        kanban, teams, crisis, tenants (+analytics/schedules/catalog), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
                        booking (public self-booking: info, slots, booking → clinic + therapist lists, 409/400),
+                       payments (the clinic's own Razorpay keys: role gate, 422/400 validation, secret never returned;
+                       with E2E_RAZORPAY_* set: Rs 1 booking → order on the clinic's account, slot held, "pending" on the
+                       session, forged signature → 400, free service → no payment, gateway disabled → no payment),
                        followups (missed session → card, idempotent sync, closed cards stay closed), deid
 web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding,
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
-                       booking (/book/<firmCode> end to end with a test-listed phone; "Booked online" badge),
+                       booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
+                       payments (with E2E_RAZORPAY_* set: admin connects the keys in Settings → Payments, secret never on
+                       the page; a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
                        journey (serial, browser-only clinic day: admin publishes a service, registers a patient,
                        schedules a session → patient books online → therapist starts it → missed session shows on
                        the Follow-up queue; the one API shortcut moves a session into the past)
 ```
 
 Specs create their own data with unique names (`uniq()`) and clean up in `finally` blocks.
+
+## Payments (Razorpay test mode)
+
+Each clinic connects its **own** Razorpay account; the suite connects the demo clinic with the
+`E2E_RAZORPAY_KEY_ID` / `E2E_RAZORPAY_KEY_SECRET` pair from `e2e/.env` (test-mode keys only; the payment
+specs skip when unset). The backend must run with `PAYMENTS_ENABLED=true` and a `PAYMENTS_ENCRYPTION_KEY`.
+The actual payment cannot be automated (Razorpay Checkout is a vendor iframe), so after the suite:
+
+1. `npx playwright test web/payments.spec.ts --headed` stops with Checkout open for a Rs 1 service, or do it by
+   hand: Settings → Payments → connect the keys, give a service price `1`, open `/book/<firm_code>`.
+2. Pay with the UPI id `success@razorpay` or card `4111 1111 1111 1111` (any future expiry, any CVV).
+3. The confirmation shows "Paid ₹1", Sessions shows the "Paid ₹1" badge, and the payment appears in the
+   Razorpay test dashboard under the clinic's account.
+
+Specs that book through the browser (`web/booking.spec.ts`, `web/journey.spec.ts`) use **free** services so
+they never reach the pay step.
 
 ## Known defects (marked `test.fixme(reason)`, listed in the report, never red)
 

@@ -115,7 +115,11 @@ src/
 ### Key Features
 - **AI**: routing between Claude 3.5 Sonnet and GPT-4o-mini; crisis detection (multi-layer); per-tenant cost tracking.
 - **Self-booking**: public `/book/<firm_code>` page; a booking is a `therapy_session` (`booked_via="web"`),
-  so it appears on the clinic's and the therapist's schedules. Patient phone proven via phone.email. No payments yet.
+  so it appears on the clinic's and the therapist's schedules. Patient phone proven via phone.email.
+- **Payments**: each clinic connects its **own** Razorpay account (Settings → Payments; secret encrypted at rest);
+  priced services are paid at booking time into the clinic's account with a 15-minute slot hold. The platform
+  holds no merchant keys; `PAYMENTS_ENABLED` + `PAYMENTS_ENCRYPTION_KEY` in `backend/.env` switch it on.
+  `.env` files are git-ignored; `.env.example` is the template.
 - **Kanban + clinical follow-up queue**: boards/tasks/comments/notifications, team assignment, dnd-kit UI;
   the "Follow-up queue" board is generated from sessions and risk flags (missed session, risk flag,
   no first session, inactive 30+ days) by `POST /kanban/followups/sync`.

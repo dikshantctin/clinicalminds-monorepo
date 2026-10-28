@@ -22,7 +22,8 @@ test.describe('/api/v1/kanban/followups', () => {
       expect(first.status(), await first.text()).toBe(200);
       const summary = await first.json();
       expect(summary.board_id).toEqual(expect.any(String));
-      expect(summary.created).toBeGreaterThanOrEqual(1);
+      // `created` may be 0 here: another worker (Tasks page, journey) can sync first — the card below is the proof
+      expect(summary.created).toBeGreaterThanOrEqual(0);
 
       const queue = await (await api.get('/api/v1/kanban/followups')).json();
       const card = queue.items.find((t: { related_session_id: string | null }) => t.related_session_id === session.id);
