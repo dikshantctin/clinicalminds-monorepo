@@ -47,3 +47,26 @@ test.describe('teams UI', () => {
     }
   });
 });
+
+test.describe('clinical follow-up queue (UI)', () => {
+  requireWeb();
+  requireAuth();
+
+  test('a missed session shows up as a follow-up card on the Follow-up queue board', async ({ page, api }) => {
+    const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Queue'), last_name: 'Patient' } })).json();
+    const session = await (
+      await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() } })
+    ).json();
+    await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 3 * 3_600_000).toISOString() } });
+    try {
+      await page.goto('/dashboard/tasks');
+      await expect(page.getByTestId('followup-summary')).toBeVisible({ timeout: 15_000 });
+      await page.getByRole('combobox').first().selectOption({ label: 'Follow-up queue' });
+      await expect(page.getByText(`Missed session: ${patient.first_name} Patient`)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('followup-reason').first()).toHaveText('Missed session');
+    } finally {
+      await api.put(`/api/v1/sessions/${session.id}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
+      await api.delete(`/api/v1/patients/${patient.id}`);
+    }
+  });
+});

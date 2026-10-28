@@ -116,7 +116,9 @@ src/
 - **AI**: routing between Claude 3.5 Sonnet and GPT-4o-mini; crisis detection (multi-layer); per-tenant cost tracking.
 - **Self-booking**: public `/book/<firm_code>` page; a booking is a `therapy_session` (`booked_via="web"`),
   so it appears on the clinic's and the therapist's schedules. Patient phone proven via phone.email. No payments yet.
-- **Kanban**: boards/tasks/comments/notifications, team assignment, dnd-kit UI, role permissions.
+- **Kanban + clinical follow-up queue**: boards/tasks/comments/notifications, team assignment, dnd-kit UI;
+  the "Follow-up queue" board is generated from sessions and risk flags (missed session, risk flag,
+  no first session, inactive 30+ days) by `POST /kanban/followups/sync`.
 - **Onboarding + verification**: public business registration (`/onboarding/*`); admin email and phone are
   verified through the phone.email widget (`/verification/*`, hard gate: 403 `verification_required` for
   unverified users; demo/test identities are allow-listed in `VERIFICATION_TEST_*`). The SMTP OTP (`/otp/*`) is unused.

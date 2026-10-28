@@ -73,7 +73,8 @@ src/pages/             page objects (login, dashboard nav + headings, add-patien
 api/                   health, auth, security (guards, tenant isolation, permissions), patients, sessions,
                        kanban, teams, crisis, tenants (+analytics/schedules/catalog), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
-                       booking (public self-booking: info, slots, booking → clinic + therapist lists, 409/400), deid
+                       booking (public self-booking: info, slots, booking → clinic + therapist lists, 409/400),
+                       followups (missed session → card, idempotent sync, closed cards stay closed), deid
 web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding,
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a test-listed phone; "Booked online" badge)
