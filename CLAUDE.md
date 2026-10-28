@@ -115,7 +115,9 @@ src/
 ### Key Features
 - **AI**: routing between Claude 3.5 Sonnet and GPT-4o-mini; crisis detection (multi-layer); per-tenant cost tracking.
 - **Kanban**: boards/tasks/comments/notifications, team assignment, dnd-kit UI, role permissions.
-- **Onboarding/OTP**: public business registration (`/onboarding/*`) with email OTP (`/otp/*`).
+- **Onboarding + verification**: public business registration (`/onboarding/*`); admin email and phone are
+  verified through the phone.email widget (`/verification/*`, hard gate: 403 `verification_required` for
+  unverified users; demo/test identities are allow-listed in `VERIFICATION_TEST_*`). The SMTP OTP (`/otp/*`) is unused.
 - **Compliance**: DPDP Act 2023, audit logging, crisis escalation, tenant isolation, de-identification before external AI calls.
 
 ## Patterns

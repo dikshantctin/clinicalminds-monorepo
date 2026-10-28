@@ -58,7 +58,6 @@ test.describe('authenticated auth endpoints', () => {
   });
 
   test('POST /auth/refresh-token issues a new token', async ({ api }) => {
-    test.fixme(true, 'auth.refresh_access_token reads current_user["id"] but the JWT payload key is "user_id" (KeyError → 500)');
     const res = await api.post('/api/v1/auth/refresh-token');
     expect(res.status()).toBe(200);
     expect((await res.json()).access_token.split('.')).toHaveLength(3);

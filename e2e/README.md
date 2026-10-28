@@ -71,8 +71,10 @@ src/env.ts             URLs, credentials, reachable(), uniq()
 src/fixtures.ts        test/expect + fixtures: api (authed), anon, auth; require*() skip helpers
 src/pages/             page objects (login, dashboard nav + headings, add-patient form)
 api/                   health, auth, security (guards, tenant isolation, permissions), patients, sessions,
-                       kanban, teams, crisis, tenants (+analytics/schedules/catalog), otp-onboarding, deid
-web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding
+                       kanban, teams, crisis, tenants (+analytics/schedules/catalog), otp-onboarding,
+                       verification (phone.email endpoints + the 403 verification_required gate), deid
+web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding,
+                       verification (/auth/verify gate for the seeded unverified intern; Settings badges)
 ```
 
 Specs create their own data with unique names (`uniq()`) and clean up in `finally` blocks.
@@ -84,7 +86,6 @@ runs for real. Live status on 2026-10-28: 101 passed, 9 fixme, 5 skipped (de-id 
 
 | Spec | Reason |
 |---|---|
-| `api/auth.spec.ts` refresh-token | backend reads `current_user["id"]`; JWT key is `user_id` |
 | `api/auth.spec.ts` register | `auth.register` returns placeholder ids, never writes to DB (real signup is `/onboarding/complete`) |
 | `api/crisis.spec.ts` assess | `crisis_detector` dependency is `lambda: None` |
 | `api/crisis.spec.ts` unknown event id | crisis event endpoints return hard-coded mock data; any id "exists" |

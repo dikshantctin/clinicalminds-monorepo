@@ -21,3 +21,7 @@ export const uniq = (prefix: string): string =>
   `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
 export const RANDOM_UUID = '00000000-0000-4000-8000-000000000000';
+
+/** Seeded by backend/scripts/setup_demo_data.py and NOT on the VERIFICATION_TEST_* allowlists:
+ *  logs in, but every clinical route answers 403 verification_required until phone.email verification. */
+export const UNVERIFIED_USER = { email: 'intern.unverified@example.com', password: 'Password123!' };
