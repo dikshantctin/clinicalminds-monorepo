@@ -4,260 +4,168 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ClinicalMinds is a multi-tenant AI-powered mental health platform with three main components:
-- **Backend**: FastAPI-based API server with PostgreSQL, AI integration (Claude 3.5, GPT-4), and multi-tenant architecture
-- **Frontend**: React/TypeScript application with Vite, Tailwind CSS, and healthcare-grade UI
-- **De-identification Service**: HIPAA-compliant microservice for clinical data de-identification
+ClinicalMinds is a multi-tenant AI-powered mental health platform. This repository is a **monorepo
+of git submodules**; each component is its own repo with its own `CLAUDE.md` — read the one for the
+area you are changing, it holds the verified details (routes, models, defects, test commands):
+
+| Path | Repo | What | Docs |
+|---|---|---|---|
+| `backend/` | `dikshantctin/clinicalminds-backend` | FastAPI + PostgreSQL (database-per-tenant), JWT auth, AI routing, crisis detection | `backend/CLAUDE.md` |
+| `frontend/` | `dikshantctin/clinicalminds-frontend` | React 18 / TypeScript / Vite / Tailwind | `frontend/CLAUDE.md` |
+| `deidentification-service/` | `dikshantctin/clinicalminds-deidentification` | HIPAA PHI de-identification microservice (:8002) | `deidentification-service/CLAUDE.md` |
+| `e2e/` | (this repo) | Playwright suite for backend API, frontend UI and de-id service | `e2e/README.md` |
+
+## Working with the submodules
+
+```bash
+git submodule update --init --recursive        # populate empty backend/ frontend/ deidentification-service/
+git submodule foreach 'git checkout main && git pull'   # track latest main in each
+git -C backend status                           # work inside a submodule like a normal repo
+```
+
+- Submodules check out **detached** at the pinned commit; `git -C <dir> checkout main` before committing.
+- Commit inside the submodule and push it **first**, then `git add <dir>` in the monorepo and commit
+  the new pointer. A monorepo commit that points at an unpushed submodule commit is broken for everyone else.
+- All three `main` branches carry the kanban / OTP / onboarding work (merged 2026-10-28).
 
 ## Essential Commands
 
-### Backend Development
+### Backend (`backend/`)
 ```bash
-cd backend
-
-# Run development server
-python main.py
-# or
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-# Code quality checks
+docker compose up -d postgres chromadb        # Postgres 16+pgvector :5432, ChromaDB :8001 (Redis :6379 not in compose)
+pip install -r requirements.txt && cp .env.example .env
+python main.py                                # :8000  (uvicorn main:app --reload)
+python scripts/setup_demo_data.py             # with the server UP: onboards the demo org — demo@clinicalmind.com / Password123! (ADMIN)
 black . --line-length 100 && ruff check . && mypy app/
-
-# Database operations
-alembic revision --autogenerate -m "description"
-alembic upgrade head
-
-# Load demo data
-python scripts/create_demo_data_working.py
-
-# Run tests
-pytest
-pytest --cov=app
+alembic revision --autogenerate -m "description" && alembic upgrade head
 ```
 
-### Frontend Development
+### Frontend (`frontend/`)
 ```bash
-cd frontend
-
-# Development
-npm run dev              # Start dev server on http://localhost:3000
-
-# Build & Production
-npm run build           # TypeScript check + Vite production build
-npm run preview         # Preview production build
-
-# Code Quality
-npm run lint            # ESLint with TypeScript rules
-npm run type-check      # TypeScript type checking
+npm install && npm run dev                    # :3000
+npm run build && npm run lint && npm run type-check
 ```
 
-### De-identification Service
+### De-identification Service (`deidentification-service/`)
 ```bash
-cd deidentification-service
+cd backend && uvicorn app.main:app --reload --port 8002
+cd backend && pytest tests/                   # unit + API tests (has its own suite)
+./quick_build.sh --quick && docker compose -f docker-compose.minimal.yml up
+```
 
-# Backend
-cd backend
-uvicorn app.main:app --reload --port 8002
-
-# Frontend
-cd frontend
-npm install && npm start
-
-# Docker (minimal setup)
-./quick_build.sh --quick
-docker compose -f docker-compose.minimal.yml up
+### End-to-end tests (`e2e/`)
+```bash
+cd e2e && npm install && npx playwright install chromium
+cp .env.example .env                          # API_URL, WEB_URL, DEID_URL, E2E_EMAIL, E2E_PASSWORD
+npx playwright test                           # all; specs skip (with reason) for any service not reachable
+npx playwright test --project=api             # backend API only
+npx playwright test --project=web             # browser UI only
+npx playwright test --grep @deid              # de-identification service
+npx playwright show-report
 ```
 
 ## Architecture Overview
 
 ### Multi-Tenant Architecture
-The platform uses **schema-based isolation** where each tenant (organization) gets a separate PostgreSQL schema. All database operations are automatically scoped to the tenant context.
+Two database layers coexist (see `backend/CLAUDE.md` → Architecture for the verified detail):
+**identity** (login, `/auth/me`, onboarding, OTP) lives in the platform database
+`clinical_mind_platform` managed by `MultiTenantDatabaseManager`; **all tenant data** (patients,
+sessions, kanban, teams, schedules, tenants, catalog, analytics) lives in the `DATABASE_URL` database
+through the older `DatabaseManager` (schema-per-tenant via `search_path`, rows scoped by `tenant_id`).
+The per-tenant `clinical_mind_tenant_*` databases are created at onboarding but nothing reads them yet.
+Onboarding writes users to both layers with the same user id.
 
-**Key Components:**
-- `TenantBase`: Base class for tenant-scoped models (always use this for tenant data)
-- `Base`: For public schema models (Tenant, User)
-- Tenant context middleware automatically sets the tenant scope
-- Role-based access control: Admin, Clinical Director, Psychologist, Therapist, Intern
+**Key points:**
+- Identity and tenant come from the JWT (`user_id`, `email`, `role`, `tenant_id`) via FastAPI
+  dependencies (`get_current_user`, `get_tenant_context`, `get_app_context`) — never from request bodies.
+- Middleware rejects non-public routes without a bearer token (401). Tenant falls back to
+  `X-Tenant-ID`, then (development only) a default tenant.
+- Roles: Admin, Clinical Director, Psychologist, Therapist, Intern, Support Staff, Patient.
+  Both sides use UPPER_CASE (`ADMIN`, `CLINICAL_DIRECTOR`, …) — never compare to lowercase literals.
+- Frontend stores `auth_token`, `auth_user`, `tenant_id` in `localStorage` and sends
+  `Authorization: Bearer` + `X-Tenant-ID` on every request.
 
 ### Backend Structure (`backend/`)
 ```
 app/
-├── api/v1/              # API endpoints (auth, patients, sessions, kanban, teams)
-├── core/
-│   ├── ai/              # AI services (model_router, crisis_detection)
-│   └── security/        # Authentication and authorization
-├── models/              # Database models with multi-tenant support
-├── middleware/          # Tenant context, auth, audit, monitoring
-├── services/            # Business logic layer
-├── schemas/             # Pydantic models for API validation
-└── config/              # Application settings
+├── api/v1/              # Routers: auth, otp, onboarding, patients, sessions, schedules, crisis, analytics,
+│                        #   tenants, catalog, availability, booking, appointments, teams, kanban, permissions
+├── core/ai/             # model_router (Claude 3.5 via legacy completions API — needs migration), crisis_detection (sklearn)
+├── core/multi_database_manager.py  # database-per-tenant
+├── models/              # platform.py (platform DB), database.py (legacy + tenant), kanban/team/appointment/audit models
+├── schemas/             # Pydantic models (kanban, team, tenant, onboarding, permissions, appointment)
+├── services/            # Business logic
+├── middleware/          # auth_middleware (PUBLIC_ENDPOINTS), audit, monitoring
+├── dependencies/        # get_app_context etc.
+└── config/settings.py
 ```
 
 ### Frontend Structure (`frontend/`)
 ```
 src/
-├── components/          # Reusable UI components
-│   ├── ai/             # AI assistant components
-│   ├── auth/           # Authentication components
-│   ├── crisis/         # Crisis management UI
-│   ├── dashboard/      # Dashboard widgets
-│   ├── kanban/         # Task management board
-│   └── patients/       # Patient management
-├── pages/              # Page components
-├── services/           # API client and services
-├── context/            # React context providers (Auth, Tenant, Theme)
-└── hooks/              # Custom React hooks
+├── App.tsx              # All routes + RoleGuard role lists
+├── config/navigation.ts # Sidebar items + roles
+├── pages/               # auth, onboarding (8-step wizard), dashboard, patients, sessions, tasks (kanban), teams, ai, crisis, analytics, settings, portal
+├── components/          # admin, ai, auth (ProtectedRoute, RoleGuard), booking, common, dashboard, debug, layout, notifications
+├── services/api.ts      # Axios client + AuthAPI/PatientAPI/SessionAPI/AIAPI/CrisisAPI/AnalyticsAPI
+├── context/             # AuthContext, TenantContext, ThemeContext
+└── hooks/
 ```
 
 ### Key Features
+- **AI**: routing between Claude 3.5 Sonnet and GPT-4o-mini; crisis detection (multi-layer); per-tenant cost tracking.
+- **Kanban**: boards/tasks/comments/notifications, team assignment, dnd-kit UI, role permissions.
+- **Onboarding/OTP**: public business registration (`/onboarding/*`) with email OTP (`/otp/*`).
+- **Compliance**: DPDP Act 2023, audit logging, crisis escalation, tenant isolation, de-identification before external AI calls.
 
-**AI Integration:**
-- Intelligent routing between Claude 3.5 Sonnet and GPT-4O
-- Crisis detection with multi-layer assessment
-- Cost tracking per tenant for billing
-- Context-aware responses based on session type
+## Patterns
 
-**Kanban Task Management:**
-- Team-based task assignment
-- Drag-and-drop interface with real-time updates
-- Role-based permissions for task management
-- Notifications and activity tracking
-
-**Healthcare Compliance:**
-- DPDP Act 2023 compliance (Indian data protection)
-- Audit logging for all clinical operations
-- Crisis escalation protocols
-- Patient data isolation per tenant
-
-## Database Patterns
-
-### Always Include Tenant Context
+### Backend endpoint
 ```python
-# Backend example
-async def get_patients(tenant_id: UUID, db: AsyncSession):
-    return await db.execute(
-        select(Patient).where(Patient.tenant_id == tenant_id)
-    )
+@router.post("/", response_model=PatientResponse)
+async def create_patient(
+    payload: PatientCreate,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    tenant: Dict[str, Any] = Depends(get_tenant_context),
+):
+    ...
 ```
 
-### Use Proper Model Base Classes
-```python
-# Tenant-scoped model
-class Patient(TenantBase):
-    __tablename__ = "patients"
-    # Fields...
-
-# Public model (no tenant scope)
-class User(Base):
-    __tablename__ = "users"
-    # Fields...
-```
-
-## API Patterns
-
-### Authentication & Permissions
-```python
-from app.utils.auth import require_permission
-
-@router.get("/patients")
-@require_permission("view_patients")
-async def get_patients(current_user: User = Depends(get_current_user)):
-    # Implementation
-```
-
-### AI Model Usage
-```python
-# Use the model router for intelligent AI routing
-response = await model_router.generate_response(
-    query=query,
-    context={"session_type": "therapy", "patient_id": patient_id}
-)
-```
-
-## Frontend Patterns
-
-### API Integration with React Query
+### Frontend data
 ```typescript
-// Data fetching with caching
-const { data, isLoading, error } = useQuery(['patients'], PatientAPI.getPatients);
-
-// Mutations with optimistic updates
+const { data, isLoading } = useQuery(['patients'], PatientAPI.getPatients);   // react-query v3
 const mutation = useMutation(PatientAPI.updatePatient, {
-  onSuccess: () => queryClient.invalidateQueries(['patients'])
+  onSuccess: () => queryClient.invalidateQueries(['patients']),
 });
 ```
 
-### Form Handling with React Hook Form + Zod
-```typescript
-const schema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email()
-});
-
-const { register, handleSubmit, formState: { errors } } = useForm({
-  resolver: zodResolver(schema)
-});
-```
-
-### Path Aliases
-TypeScript and Vite are configured with these aliases:
-- `@/` → `src/`
-- `@components/` → `src/components/`
-- `@services/` → `src/services/`
-- `@hooks/` → `src/hooks/`
-- `@context/` → `src/context/`
-
-## Environment Variables
-
-### Backend (.env)
-- Database: `DATABASE_URL`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-- AI APIs: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
-- Security: `SECRET_KEY`, `JWT_SECRET_KEY`
-- Email: `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USERNAME`, `EMAIL_PASSWORD`
-
-### Frontend (.env)
-- `VITE_API_URL` - Backend API URL (defaults to `http://localhost:8000`)
-
-## Testing
-
-### Backend Testing
-```bash
-pytest tests/                     # Run all tests
-pytest tests/test_multi_tenant.py # Run specific test
-pytest --cov=app                  # With coverage
-```
-
-### Frontend Testing
-Currently no test framework configured. When adding tests, use React Testing Library with Vitest.
+### Forms: React Hook Form + Zod (`zodResolver`).
 
 ## Important Considerations
 
-1. **Healthcare Compliance**: This is a healthcare application. Ensure patient data security and DPDP Act 2023 compliance.
-2. **Multi-tenant Isolation**: Always consider tenant context when making changes. Never allow cross-tenant data access.
-3. **Crisis Management**: Crisis detection features are critical - handle with care and test thoroughly.
-4. **Professional UI**: Maintain healthcare-grade professional appearance with appropriate clinical colors.
-5. **AI Cost Tracking**: Monitor AI usage as it directly impacts billing for tenants.
+1. **Healthcare Compliance**: patient data security and DPDP Act 2023. Never log PHI.
+2. **Multi-tenant Isolation**: never allow cross-tenant data access; tenant comes from the JWT.
+3. **Crisis Management**: critical path — test thoroughly.
+4. **Professional UI**: healthcare-grade appearance, WCAG 2.1 AA.
+5. **AI Cost Tracking**: usage drives tenant billing.
+6. **Known defects** are listed per component in each `CLAUDE.md` (e.g. backend `register`/`refresh-token`
+   stubs, orphaned frontend jest tests, de-id frontend lacks `package.json`). Check before building on an endpoint.
 
 ## Common Tasks
 
 ### Adding a New API Endpoint
-1. Create route in `backend/app/api/v1/`
-2. Add Pydantic schemas in `backend/app/schemas/`
-3. Include tenant context and permissions
-4. Add corresponding API client in `frontend/src/services/api.ts`
+1. Route in `backend/app/api/v1/` (register in `api/v1/__init__.py`), models in `app/schemas/`.
+2. Identity/tenant via dependencies; add permission checks.
+3. Client method in `frontend/src/services/api.ts`.
+4. Spec in `e2e/api/`; row in the API table of `backend/CLAUDE.md`.
+
+### Adding a Page
+1. Page in `frontend/src/pages/`, route + `RoleGuard` in `App.tsx`, sidebar entry in `config/navigation.ts`.
+2. Add `data-testid`s to interactive elements; spec in `e2e/web/`.
 
 ### Adding Database Models
-1. Inherit from `TenantBase` for tenant-scoped data
-2. Include standard fields (`created_at`, `updated_at`, `is_active`)
-3. Create Alembic migration
-4. Add appropriate indexes for tenant queries
-
-### Implementing New Features
-1. Check tenant scope requirements
-2. Define role-based permissions
-3. Follow existing patterns for consistency
-4. Add comprehensive error handling
-5. Include audit logging for compliance
+1. Tenant data → tenant DB models; platform data → `models/platform.py`.
+2. UUID PKs, `created_at`/`updated_at`/`is_active`; Alembic migration; tenant-aware indexes.
 
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph

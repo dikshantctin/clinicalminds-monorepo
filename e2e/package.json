@@ -1,0 +1,22 @@
+{
+  "name": "clinicalminds-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright end-to-end suite for the ClinicalMinds backend API, frontend UI and de-identification service",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:web": "playwright test --project=web",
+    "test:deid": "playwright test --grep @deid",
+    "test:headed": "playwright test --project=web --headed",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install chromium",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1",
+    "@types/node": "20.17.10",
+    "dotenv": "16.4.5",
+    "typescript": "5.7.2"
+  }
+}
