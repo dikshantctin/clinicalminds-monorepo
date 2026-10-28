@@ -77,7 +77,10 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        followups (missed session → card, idempotent sync, closed cards stay closed), deid
 web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding,
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
-                       booking (/book/<firmCode> end to end with a test-listed phone; "Booked online" badge)
+                       booking (/book/<firmCode> end to end with a test-listed phone; "Booked online" badge),
+                       journey (serial, browser-only clinic day: admin publishes a service, registers a patient,
+                       schedules a session → patient books online → therapist starts it → missed session shows on
+                       the Follow-up queue; the one API shortcut moves a session into the past)
 ```
 
 Specs create their own data with unique names (`uniq()`) and clean up in `finally` blocks.

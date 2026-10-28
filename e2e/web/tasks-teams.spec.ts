@@ -62,8 +62,10 @@ test.describe('clinical follow-up queue (UI)', () => {
       await page.goto('/dashboard/tasks');
       await expect(page.getByTestId('followup-summary')).toBeVisible({ timeout: 15_000 });
       await page.getByRole('combobox').first().selectOption({ label: 'Follow-up queue' });
-      await expect(page.getByText(`Missed session: ${patient.first_name} Patient`)).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByTestId('followup-reason').first()).toHaveText('Missed session');
+      const card = page.getByText(`Missed session: ${patient.first_name} Patient`);
+      await expect(card).toHaveCount(1, { timeout: 15_000 }); // exactly one: concurrent syncs must not duplicate
+      // card markup: div.relative > [div.flex > h4.title, span.priority] + span[data-testid=followup-reason]
+      await expect(card.locator('..').locator('..').getByTestId('followup-reason')).toHaveText('Missed session');
     } finally {
       await api.put(`/api/v1/sessions/${session.id}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
       await api.delete(`/api/v1/patients/${patient.id}`);

@@ -90,7 +90,9 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
       expect(mine.sessions.map((s: { id: string }) => s.id)).toContain(conf.session_id);
       for (const s of mine.sessions) expect(s.therapist_id).toBe(practitioner.id);
     } finally {
-      await api.put(`/api/v1/sessions/${conf.session_id}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
+      // updating a booked session must work (its treatment_modality is null)
+      const cancelled = await api.put(`/api/v1/sessions/${conf.session_id}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
+      expect(cancelled.status(), await cancelled.text()).toBe(200);
     }
   });
 

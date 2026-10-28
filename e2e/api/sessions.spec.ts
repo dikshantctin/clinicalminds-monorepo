@@ -26,6 +26,7 @@ test.describe('/api/v1/sessions', () => {
 
       const read = await api.get(`/api/v1/sessions/${session.id}`);
       expect(read.status()).toBe(200);
+      expect(await read.json()).toEqual(expect.objectContaining({ id: session.id, patient_id: patient.id, status: 'scheduled', duration_minutes: 50 }));
 
       const list = await api.get('/api/v1/sessions/');
       expect(list.status()).toBe(200);
@@ -35,12 +36,16 @@ test.describe('/api/v1/sessions', () => {
 
       const started = await api.post(`/api/v1/sessions/${session.id}/start`);
       expect(started.status(), await started.text()).toBe(200);
+      expect((await (await api.get(`/api/v1/sessions/${session.id}`)).json()).status).toBe('in_progress');
+      expect((await api.post(`/api/v1/sessions/${session.id}/start`)).status(), 'cannot start twice').toBe(409);
 
       const notes = await api.put(`/api/v1/sessions/${session.id}/patient-notes`, { data: { notes: 'e2e note' } });
       expect([200, 422]).toContain(notes.status());
 
       const completed = await api.post(`/api/v1/sessions/${session.id}/complete`);
       expect(completed.status(), await completed.text()).toBe(200);
+      expect((await (await api.get(`/api/v1/sessions/${session.id}`)).json()).status).toBe('completed');
+      expect((await api.post(`/api/v1/sessions/${session.id}/complete`)).status(), 'cannot complete twice').toBe(409);
     } finally {
       await api.delete(`/api/v1/patients/${patient.id}`);
     }

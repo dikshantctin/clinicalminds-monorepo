@@ -31,8 +31,7 @@ test.describe('/api/v1/kanban/followups', () => {
       expect(card.title).toContain(patient.first_name);
 
       // idempotent
-      const second = await (await api.post('/api/v1/kanban/followups/sync')).json();
-      expect(second.created).toBe(0);
+      await api.post('/api/v1/kanban/followups/sync'); // other specs may create their own cards concurrently
       const again = await (await api.get('/api/v1/kanban/followups')).json();
       expect(again.items.filter((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toHaveLength(1);
 
@@ -44,10 +43,31 @@ test.describe('/api/v1/kanban/followups', () => {
       // closing it = action taken; a later sync must not resurrect a session-keyed card
       const done = await api.post(`/api/v1/kanban/tasks/${card.id}/move`, { data: { status: 'done', position: 0 } });
       expect(done.status(), await done.text()).toBe(200);
-      const third = await (await api.post('/api/v1/kanban/followups/sync')).json();
+      await api.post('/api/v1/kanban/followups/sync');
       const after = await (await api.get('/api/v1/kanban/followups')).json();
       expect(after.items.filter((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toHaveLength(0);
-      expect(third.created).toBe(0);
+    } finally {
+      await api.put(`/api/v1/sessions/${session.id}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
+      await api.delete(`/api/v1/patients/${patient.id}`);
+    }
+  });
+
+  test('a card is archived once its trigger is resolved (session rebooked)', async ({ api }) => {
+    const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Rebook'), last_name: 'Patient' } })).json();
+    const session = await (
+      await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() } })
+    ).json();
+    await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 3 * 3_600_000).toISOString() } });
+    try {
+      await api.post('/api/v1/kanban/followups/sync');
+      let queue = await (await api.get('/api/v1/kanban/followups')).json();
+      expect(queue.items.some((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toBe(true);
+      // the therapist rebooks it for next week → the reminder is no longer justified
+      await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() + 7 * 86_400_000).toISOString() } });
+      const synced = await (await api.post('/api/v1/kanban/followups/sync')).json();
+      expect(synced.archived).toBeGreaterThanOrEqual(1);
+      queue = await (await api.get('/api/v1/kanban/followups')).json();
+      expect(queue.items.some((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toBe(false);
     } finally {
       await api.put(`/api/v1/sessions/${session.id}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
       await api.delete(`/api/v1/patients/${patient.id}`);
