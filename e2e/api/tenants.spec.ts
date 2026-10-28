@@ -1,6 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 
-test.describe('/api/v1/tenants and /api/v1/analytics', () => {
+test.describe('/api/v1/tenants', () => {
   requireApi();
   requireAuth();
 
@@ -25,15 +25,19 @@ test.describe('/api/v1/tenants and /api/v1/analytics', () => {
     expect((await api.get(`/api/v1/tenants/${auth.tenantId}/billing`)).status()).toBe(200);
   });
 
-  test('analytics endpoints respond for the tenant', async ({ api }) => {
-    for (const path of ['/api/v1/analytics/usage', '/api/v1/analytics/performance', '/api/v1/analytics/ai-usage', '/api/v1/analytics/billing']) {
-      const res = await api.get(path);
-      expect(res.status(), path).toBe(200);
+  test('PUT /tenants/{id}/branding stores the colour and GET reads it back', async ({ api, auth }) => {
+    const before = await (await api.get(`/api/v1/tenants/${auth.tenantId}/branding`)).json();
+    try {
+      const put = await api.put(`/api/v1/tenants/${auth.tenantId}/branding`, { data: { primary_color: '#336699', organization_name: 'Branding e2e' } });
+      expect(put.status(), await put.text()).toBe(200);
+      const after = await (await api.get(`/api/v1/tenants/${auth.tenantId}/branding`)).json();
+      expect(after).toEqual(expect.objectContaining({ primary_color: '#336699', organization_name: 'Branding e2e' }));
+      expect((await api.put(`/api/v1/tenants/${auth.tenantId}/branding`, { data: { primary_color: 'blue' } })).status()).toBe(422);
+    } finally {
+      await api.put(`/api/v1/tenants/${auth.tenantId}/branding`, {
+        data: { primary_color: before.primary_color ?? '#667eea', organization_name: before.organization_name ?? 'Demo Mental Health Clinic' },
+      });
     }
-  });
-
-  test('GET /analytics/clinical-insights responds', async ({ api }) => {
-    expect((await api.get('/api/v1/analytics/clinical-insights')).status()).toBe(200);
   });
 
   test('schedule endpoints respond', async ({ api }) => {

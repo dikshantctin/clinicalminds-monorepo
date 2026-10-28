@@ -28,7 +28,7 @@ Bring up the stack (see each component's `CLAUDE.md`):
 
 ```bash
 # backend
-cd ../backend && docker compose up -d postgres chromadb && python main.py
+cd ../backend && docker compose up -d postgres && python main.py
 python scripts/setup_demo_data.py        # with the server up: onboards demo@clinicalmind.com / Password123! (ADMIN)
                                          # (POSTs /api/v1/onboarding/complete — the only path that writes both DB layers)
 # frontend
@@ -71,7 +71,8 @@ src/env.ts             URLs, credentials, reachable(), uniq()
 src/fixtures.ts        test/expect + fixtures: api (authed), anon, auth; require*() skip helpers
 src/pages/             page objects (login, dashboard nav + headings, add-patient form)
 api/                   health, auth, security (guards, tenant isolation, permissions), patients, sessions,
-                       kanban, teams, crisis, tenants (+analytics/schedules/catalog), otp-onboarding,
+                       kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
+                       live numbers), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
                        booking (public self-booking: info, slots, booking → clinic + therapist lists, 409/400),
                        payments (the clinic's own Razorpay keys, read from the demo DB: role gate, 422/400 validation,
@@ -128,10 +129,7 @@ runs for real. Live status on 2026-10-28: 101 passed, 9 fixme, 5 skipped (de-id 
 | Spec | Reason |
 |---|---|
 | `api/auth.spec.ts` register | `auth.register` returns placeholder ids, never writes to DB (real signup is `/onboarding/complete`) |
-| `api/crisis.spec.ts` assess | `crisis_detector` dependency is `lambda: None` |
-| `api/crisis.spec.ts` unknown event id | crisis event endpoints return hard-coded mock data; any id "exists" |
 | `api/otp-onboarding.spec.ts` generate | needs SMTP credentials |
-| `api/security.spec.ts` permissions ×2 | `permissions.py` is unfinished and deliberately not mounted |
 | `api/tenants.spec.ts` usage/billing | `TenantUsage` model has no `tenant_id` column |
 
 Two Playwright processes must not share `test-results/` (you get `ENOENT … trace` errors, not real

@@ -10,7 +10,7 @@ area you are changing, it holds the verified details (routes, models, defects, t
 
 | Path | Repo | What | Docs |
 |---|---|---|---|
-| `backend/` | `dikshantctin/clinicalminds-backend` | FastAPI + PostgreSQL (database-per-tenant), JWT auth, AI routing, crisis detection | `backend/CLAUDE.md` |
+| `backend/` | `dikshantctin/clinicalminds-backend` | FastAPI + PostgreSQL (database-per-tenant), JWT auth, self-booking + per-clinic payments, follow-up queue | `backend/CLAUDE.md` |
 | `frontend/` | `dikshantctin/clinicalminds-frontend` | React 18 / TypeScript / Vite / Tailwind | `frontend/CLAUDE.md` |
 | `deidentification-service/` | `dikshantctin/clinicalminds-deidentification` | HIPAA PHI de-identification microservice (:8002) | `deidentification-service/CLAUDE.md` |
 | `e2e/` | (this repo) | Playwright suite for backend API, frontend UI and de-id service | `e2e/README.md` |
@@ -32,10 +32,11 @@ git -C backend status                           # work inside a submodule like a
 
 ### Backend (`backend/`)
 ```bash
-docker compose up -d postgres chromadb        # Postgres 16+pgvector :5432, ChromaDB :8001 (Redis :6379 not in compose)
+docker compose up -d postgres                 # Postgres 16+pgvector :5432 (Redis :6379 not in compose)
 pip install -r requirements.txt && cp .env.example .env
 python main.py                                # :8000  (uvicorn main:app --reload)
 python scripts/setup_demo_data.py             # with the server UP: onboards the demo org — demo@clinicalmind.com / Password123! (ADMIN)
+python scripts/demo_data.py import scripts/fixtures/demo_clinic.json   # real demo rows (patients/sessions/payments), dates re-based onto today
 black . --line-length 100 && ruff check . && mypy app/
 alembic revision --autogenerate -m "description" && alembic upgrade head
 ```
@@ -89,8 +90,7 @@ Onboarding writes users to both layers with the same user id.
 ```
 app/
 ├── api/v1/              # Routers: auth, otp, onboarding, verification, public_booking, patients, sessions,
-│                        #   schedules, crisis, analytics, tenants, catalog, teams, kanban (permissions: unmounted)
-├── core/ai/             # model_router (Claude 3.5 via legacy completions API — needs migration), crisis_detection (sklearn)
+│                        #   schedules, analytics (GET overview only), tenants, catalog, teams, kanban, payments
 ├── core/multi_database_manager.py  # database-per-tenant
 ├── models/              # platform.py (platform DB), database.py (legacy + tenant), kanban/team/appointment/audit models
 ├── schemas/             # Pydantic models (kanban, team, tenant, onboarding, permissions, appointment)
@@ -105,15 +105,17 @@ app/
 src/
 ├── App.tsx              # All routes + RoleGuard role lists
 ├── config/navigation.ts # Sidebar items + roles
-├── pages/               # auth, onboarding (8-step wizard), dashboard, patients, sessions, tasks (kanban), teams, ai, crisis, analytics, settings, portal
-├── components/          # admin, ai, auth (ProtectedRoute, RoleGuard), booking, common, dashboard, debug, layout, notifications
-├── services/api.ts      # Axios client + AuthAPI/PatientAPI/SessionAPI/AIAPI/CrisisAPI/AnalyticsAPI
+├── pages/               # auth, onboarding (8-step wizard), dashboard, patients, sessions, tasks (kanban), teams, settings, portal, booking
+├── components/          # admin, auth (ProtectedRoute, RoleGuard), booking, common, dashboard, debug, layout, notifications, settings
+├── services/api.ts      # Axios client + AuthAPI/PatientAPI/SessionAPI/OverviewAPI/TenantAPI/PublicBookingAPI/PaymentsAPI
 ├── context/             # AuthContext, TenantContext, ThemeContext
 └── hooks/
 ```
 
 ### Key Features
-- **AI**: routing between Claude 3.5 Sonnet and GPT-4o-mini; crisis detection (multi-layer); per-tenant cost tracking.
+- **Dashboard**: four live numbers from `GET /analytics/overview` (sessions this week, no-shows, revenue collected
+  this month, patients needing follow-up). No AI assistant, crisis page or analytics page exist any more: they were
+  facades over mock data and were removed on 2026-10-28. Planned AI = a note-drafting scribe behind de-identification.
 - **Self-booking**: public `/book/<firm_code>` page; a booking is a `therapy_session` (`booked_via="web"`),
   so it appears on the clinic's and the therapist's schedules. Patient phone proven via phone.email.
 - **Payments**: each clinic connects its **own** Razorpay account (Settings → Payments; secret encrypted at rest);
@@ -155,10 +157,9 @@ const mutation = useMutation(PatientAPI.updatePatient, {
 
 1. **Healthcare Compliance**: patient data security and DPDP Act 2023. Never log PHI.
 2. **Multi-tenant Isolation**: never allow cross-tenant data access; tenant comes from the JWT.
-3. **Crisis Management**: critical path — test thoroughly.
+3. **No invented numbers**: every figure a clinic sees must come from its own rows (see `demo_data.py` for demos).
 4. **Professional UI**: healthcare-grade appearance, WCAG 2.1 AA.
-5. **AI Cost Tracking**: usage drives tenant billing.
-6. **Known defects** are listed per component in each `CLAUDE.md` (e.g. backend `register`/`refresh-token`
+5. **Known defects** are listed per component in each `CLAUDE.md` (e.g. backend `register`/`refresh-token`
    stubs, orphaned frontend jest tests, de-id frontend lacks `package.json`). Check before building on an endpoint.
 
 ## Common Tasks

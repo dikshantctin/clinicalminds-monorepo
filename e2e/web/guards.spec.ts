@@ -6,7 +6,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 test.describe('route guards (logged out)', () => {
   requireWeb();
 
-  for (const path of ['/dashboard', '/dashboard/patients', '/dashboard/tasks', '/dashboard/crisis', '/dashboard/analytics', '/dashboard/settings']) {
+  for (const path of ['/dashboard', '/dashboard/patients', '/dashboard/tasks', '/dashboard/settings']) {
     test(`${path} redirects to /auth/login`, async ({ page }) => {
       await page.goto(path);
       await expect(page).toHaveURL(/\/auth\/login$/);

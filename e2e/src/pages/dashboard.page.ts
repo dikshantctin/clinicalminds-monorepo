@@ -7,9 +7,6 @@ export const NAV = {
   Sessions: '/dashboard/sessions',
   Tasks: '/dashboard/tasks',
   Teams: '/dashboard/teams',
-  'AI Assistant': '/dashboard/ai-assistant',
-  'Crisis Management': '/dashboard/crisis',
-  Analytics: '/dashboard/analytics',
   Settings: '/dashboard/settings',
 } as const;
 
@@ -22,8 +19,6 @@ export const PAGE_HEADING: Partial<Record<NavName, string | RegExp>> = {
   Sessions: 'Session Management',
   Tasks: 'Task Management',
   Teams: 'Team Management',
-  'Crisis Management': 'Crisis Management',
-  Analytics: 'Analytics',
 };
 
 export class DashboardPage {
