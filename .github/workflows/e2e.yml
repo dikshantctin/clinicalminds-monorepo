@@ -40,6 +40,7 @@ jobs:
         with:
           submodules: recursive
           token: ${{ secrets.SUBMODULES_TOKEN }} # PAT with read access to the private submodule repos
+          persist-credentials: false # keep the PAT out of .git/config while third-party installs run
 
       - uses: actions/setup-python@v5
         with:

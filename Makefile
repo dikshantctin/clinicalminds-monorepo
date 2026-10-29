@@ -4,7 +4,7 @@
 check:
 	@for d in backend frontend; do \
 		if [ -f $$d/Makefile ]; then $(MAKE) -C $$d check || exit 1; \
-		else echo "skip: $$d/Makefile not found"; fi; \
+		else echo "error: $$d/Makefile not found (submodule not checked out?)"; exit 1; fi; \
 	done
 
 e2e:
