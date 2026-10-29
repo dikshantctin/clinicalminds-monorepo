@@ -21,7 +21,7 @@ test.describe('settings and admin pages', () => {
   test('branding colour saves and survives a reload', async ({ page }) => {
     test.slow(); // several full page loads on the dev server
     await page.goto('/dashboard/settings');
-    await page.getByRole('button', { name: /Branding/ }).click();
+    await page.getByRole('tab', { name: /Branding/ }).click();
     const colour = page.getByTestId('branding-primary-color');
     const original = await colour.inputValue();
     try {
@@ -29,7 +29,7 @@ test.describe('settings and admin pages', () => {
       await page.getByTestId('branding-save').click();
       await expect(page.getByText('Branding Updated')).toBeVisible();
       await page.reload();
-      await page.getByRole('button', { name: /Branding/ }).click();
+      await page.getByRole('tab', { name: /Branding/ }).click();
       await expect(page.getByTestId('branding-primary-color')).toHaveValue('#336699');
     } finally {
       await page.getByTestId('branding-primary-color').fill(original);

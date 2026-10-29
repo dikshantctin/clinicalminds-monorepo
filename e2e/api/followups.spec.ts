@@ -48,7 +48,7 @@ test.describe('/api/v1/kanban/followups', () => {
       const after = await (await api.get('/api/v1/kanban/followups')).json();
       expect(after.items.filter((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toHaveLength(0);
     } finally {
-      await api.put(`/api/v1/sessions/${session.id}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
+      await api.post(`/api/v1/sessions/${session.id}/cancel`, { data: { reason: 'e2e cleanup' } });
       await api.delete(`/api/v1/patients/${patient.id}`);
     }
   });
@@ -65,12 +65,12 @@ test.describe('/api/v1/kanban/followups', () => {
       expect(queue.items.some((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toBe(true);
       // the therapist rebooks it for next week → the reminder is no longer justified
       await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() + 7 * 86_400_000).toISOString() } });
-      const synced = await (await api.post('/api/v1/kanban/followups/sync')).json();
-      expect(synced.archived).toBeGreaterThanOrEqual(1);
+      // (the overview endpoint also syncs, so another worker may have archived it already — the queue is the proof)
+      expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200);
       queue = await (await api.get('/api/v1/kanban/followups')).json();
       expect(queue.items.some((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toBe(false);
     } finally {
-      await api.put(`/api/v1/sessions/${session.id}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
+      await api.post(`/api/v1/sessions/${session.id}/cancel`, { data: { reason: 'e2e cleanup' } });
       await api.delete(`/api/v1/patients/${patient.id}`);
     }
   });

@@ -38,7 +38,7 @@ test.describe('login page', () => {
     const login = new LoginPage(page);
     await login.goto();
     await login.password.fill('secret');
-    await page.locator('#password ~ button, #password + button').first().click();
+    await page.getByRole('button', { name: 'Show password' }).click();
     await expect(login.password).toHaveAttribute('type', 'text');
   });
 

@@ -30,7 +30,7 @@ test.describe('Settings → Payments (clinic admin)', () => {
 
   test('the Payments tab renders for the admin with the connection status and the key form', async ({ page }) => {
     await page.goto('/dashboard/settings');
-    await page.getByRole('button', { name: 'Payments' }).click();
+    await page.getByRole('tab', { name: 'Payments' }).click();
     await expect(page.getByTestId('payments-status')).toBeVisible();
     await expect(page.getByTestId('payments-status')).toContainText(/Connected|Not connected/);
     await expect(page.getByTestId('payments-key-id')).toBeVisible();
@@ -41,7 +41,7 @@ test.describe('Settings → Payments (clinic admin)', () => {
     test.skip(!(await gatewayReady(api)), NO_GATEWAY);
     const cfg = await (await api.get('/api/v1/payments/config')).json();
     await page.goto('/dashboard/settings');
-    await page.getByRole('button', { name: 'Payments' }).click();
+    await page.getByRole('tab', { name: 'Payments' }).click();
     await expect(page.getByTestId('payments-status')).toContainText('Connected');
     await expect(page.getByTestId('payments-status')).toContainText(cfg.key_id);
     await expect(page.getByTestId('payments-status')).toContainText(cfg.secret_hint);
@@ -50,7 +50,7 @@ test.describe('Settings → Payments (clinic admin)', () => {
   test('typing a fresh secret connects it and never echoes it back [optional: E2E_RAZORPAY_*]', async ({ page }) => {
     test.skip(!haveSecret, 'set E2E_RAZORPAY_KEY_ID / E2E_RAZORPAY_KEY_SECRET to exercise the write path');
     await page.goto('/dashboard/settings');
-    await page.getByRole('button', { name: 'Payments' }).click();
+    await page.getByRole('tab', { name: 'Payments' }).click();
     await page.getByTestId('payments-key-id').fill(RAZORPAY.keyId);
     await page.getByTestId('payments-key-secret').fill(RAZORPAY.keySecret);
     await page.getByTestId('payments-save').click();
@@ -76,9 +76,9 @@ test.describe('public booking pays the clinic', () => {
 
     await page.goto(`/book/${auth.firmCode}`);
     await page.getByTestId(`service-${service.id}`).click();
-    await page.getByRole('button', { name: /Jane Doe/ }).click();
+    await page.getByRole('radio', { name: /Jane Doe/ }).click();
     await page.getByTestId('booking-date').fill(bookingDate());
-    const slotButtons = page.getByTestId('booking-slots').getByRole('button');
+    const slotButtons = page.getByTestId('booking-slots').getByRole('radio');
     await expect(slotButtons.first()).toBeVisible({ timeout: 15_000 });
     await slotButtons.last().click();
     await page.getByTestId('booking-first-name').fill(uniq('Pay'));
@@ -97,7 +97,7 @@ test.describe('public booking pays the clinic', () => {
       const row = (await (await api.get('/api/v1/sessions/', { params: { limit: 500 } })).json()).sessions.find((s: { id: string }) => s.id === reference);
       expect(row).toEqual(expect.objectContaining({ booked_via: 'web', payment_status: 'pending', amount_paise: 100 }));
     } finally {
-      await api.put(`/api/v1/sessions/${reference}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
+      await api.post(`/api/v1/sessions/${reference}/cancel`, { data: { reason: 'e2e cleanup' } });
     }
   });
 });
