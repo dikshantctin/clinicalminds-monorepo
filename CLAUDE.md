@@ -26,7 +26,6 @@ git -C backend status                           # work inside a submodule like a
 - Submodules check out **detached** at the pinned commit; `git -C <dir> checkout main` before committing.
 - Commit inside the submodule and push it **first**, then `git add <dir>` in the monorepo and commit
   the new pointer. A monorepo commit that points at an unpushed submodule commit is broken for everyone else.
-- All three `main` branches carry the kanban / OTP / onboarding work (merged 2026-10-28).
 
 ## Essential Commands
 
@@ -114,8 +113,8 @@ src/
 
 ### Key Features
 - **Dashboard**: four live numbers from `GET /analytics/overview` (sessions this week, no-shows, revenue collected
-  this month, patients needing follow-up). No AI assistant, crisis page or analytics page exist any more: they were
-  facades over mock data and were removed on 2026-10-28. Planned AI = a note-drafting scribe behind de-identification.
+  this month, patients needing follow-up). There is no AI assistant, crisis page or analytics page
+  (mock-data facades were removed). Planned AI = a note-drafting scribe behind de-identification.
 - **Self-booking**: public `/book/<firm_code>` page; a booking is a `therapy_session` (`booked_via="web"`),
   so it appears on the clinic's and the therapist's schedules. Patient phone proven via phone.email.
 - **Payments**: each clinic connects its **own** Razorpay account (Settings → Payments; secret encrypted at rest);
@@ -155,7 +154,9 @@ const mutation = useMutation(PatientAPI.updatePatient, {
 
 ## Important Considerations
 
-1. **Healthcare Compliance**: patient data security and DPDP Act 2023. Never log PHI.
+1. **Healthcare Compliance**: patient data security and DPDP Act 2023. Never log PHI, tokens, passwords,
+   invite/reset links or API secrets — backend loggers and frontend `console.*` alike. Never return exception
+   text to clients (`detail=str(e)`): log the exception type server-side, answer with a fixed message.
 2. **Multi-tenant Isolation**: never allow cross-tenant data access; tenant comes from the JWT.
 3. **No invented numbers**: every figure a clinic sees must come from its own rows (see `demo_data.py` for demos).
 4. **Professional UI**: healthcare-grade appearance, WCAG 2.1 AA.
@@ -178,41 +179,24 @@ const mutation = useMutation(PatientAPI.updatePatient, {
 1. Tenant data → tenant DB models; platform data → `models/platform.py`.
 2. UUID PKs, `created_at`/`updated_at`/`is_active`; Alembic migration; tenant-aware indexes.
 
-<!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
+## Definition of done
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+Each submodule has `make check` (backend: ruff + mypy + pytest; frontend: lint + type-check + build);
+the root `Makefile` runs both (`make check`) and the Playwright suite (`make e2e`). Nothing is "done"
+until you have run `make check` in every submodule you touched **and** the relevant Playwright specs
+(`cd e2e && npx playwright test <spec>`) against a running stack, and read the output. A skipped spec is not a pass.
 
-### When to use graph tools FIRST
+## Tests with every feature
 
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
+Any feature or bugfix that changes user-visible behavior or an API contract ships with a Playwright spec in
+`e2e/api/` or `e2e/web/`, written **first** (it fails, then the change makes it pass):
+- exact asserts: one status (`toBe(403)`), exact body fields — never "200 or 422";
+- at least one negative case (wrong role → 403, no token → 401, bad input → 422, foreign tenant → 403);
+- `data-testid` selectors for anything the UI spec clicks or reads;
+- no `test.skip` that hides a failure — skips are only for an unreachable service; a known, unfixed defect is
+  a `test.fixme(reason)` listed in `e2e/README.md`, removed by the fix.
 
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+## Git workflow
 
-### Key Tools
-
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+- One branch + PR per change; never commit straight to `main`. Small, focused commits.
+- Submodules: commit and push the submodule branch **first**, then commit the new pointer in the monorepo.
