@@ -221,3 +221,34 @@ test.describe('role access: tenant comes from the JWT only', () => {
     }
   });
 });
+
+test.describe('role access: clinicians see only patients assigned to them', () => {
+  requireApi();
+  requireAuth();
+
+  test('unassigned → 403 and not listed; once assigned → 200 and listed; a colleague still → 403', async ({ api }) => {
+    const created = await api.post('/api/v1/patients/', { data: { first_name: uniq('Scope'), last_name: 'Patient' } });
+    expect(created.status(), await created.text()).toBe(200);
+    const patient = await created.json();
+    const therapist = await loginAs(DEMO_THERAPIST);
+    const psychologist = await loginAs(DEMO_PSYCHOLOGIST);
+    const listedIds = async (s: Session) =>
+      ((await (await s.ctx.get('/api/v1/patients/?limit=1000')).json()).patients as { id: string }[]).map((p) => p.id);
+    try {
+      expect((await therapist.ctx.get(`/api/v1/patients/${patient.id}`)).status()).toBe(403);
+      expect(await listedIds(therapist)).not.toContain(patient.id);
+
+      const assigned = await api.put(`/api/v1/patients/${patient.id}`, { data: { assigned_therapist_id: therapist.userId } });
+      expect(assigned.status(), await assigned.text()).toBe(200);
+
+      expect((await therapist.ctx.get(`/api/v1/patients/${patient.id}`)).status()).toBe(200);
+      expect(await listedIds(therapist)).toContain(patient.id);
+      expect((await psychologist.ctx.get(`/api/v1/patients/${patient.id}`)).status()).toBe(403);
+      expect(await listedIds(psychologist)).not.toContain(patient.id);
+    } finally {
+      await therapist.ctx.dispose();
+      await psychologist.ctx.dispose();
+      await api.delete(`/api/v1/patients/${patient.id}`);
+    }
+  });
+});
