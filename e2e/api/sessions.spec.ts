@@ -1,5 +1,5 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { uniq } from '../src/env';
+import { uniq, RANDOM_UUID } from '../src/env';
 
 test.describe('/api/v1/sessions', () => {
   requireApi();
@@ -8,6 +8,14 @@ test.describe('/api/v1/sessions', () => {
   test('validates the create body (422 without patient_id / scheduled_at)', async ({ api }) => {
     expect((await api.post('/api/v1/sessions/', { data: {} })).status()).toBe(422);
     expect((await api.post('/api/v1/sessions/', { data: { patient_id: 'x', scheduled_at: new Date().toISOString(), duration_minutes: 5 } })).status()).toBe(422);
+  });
+
+  test('a patient outside the clinic cannot be booked (404)', async ({ api }) => {
+    const scheduled_at = new Date(Date.now() + 86_400_000).toISOString();
+    for (const patient_id of [RANDOM_UUID, 'not-a-uuid']) {
+      const res = await api.post('/api/v1/sessions/', { data: { patient_id, scheduled_at } });
+      expect(res.status(), await res.text()).toBe(404);
+    }
   });
 
   test('schedule a session for a patient, then read, list, start and complete it', async ({ api }) => {

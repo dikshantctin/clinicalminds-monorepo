@@ -64,7 +64,8 @@ test.describe('/api/v1/patients', () => {
 
   test('unknown patient id → 404', async ({ api }) => {
     const res = await api.get(`/api/v1/patients/${RANDOM_UUID}`);
-    expect([404, 400]).toContain(res.status());
+    expect(res.status()).toBe(404);
+    expect((await api.get('/api/v1/patients/not-a-uuid')).status()).toBe(404);
   });
 
   test('POST /patients/set-password rejects a bad invite token', async ({ anon }) => {
