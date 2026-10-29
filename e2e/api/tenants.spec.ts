@@ -43,7 +43,7 @@ test.describe('/api/v1/tenants', () => {
   test('schedule endpoints respond', async ({ api }) => {
     for (const path of ['/api/v1/schedules/daily', '/api/v1/schedules/weekly', '/api/v1/schedules/stats']) {
       const res = await api.get(path);
-      expect([200, 422], path).toContain(res.status());
+      expect(res.status(), path).toBe(200);
     }
   });
 

@@ -47,8 +47,9 @@ test.describe('/api/v1/sessions', () => {
       expect((await (await api.get(`/api/v1/sessions/${session.id}`)).json()).status).toBe('in_progress');
       expect((await api.post(`/api/v1/sessions/${session.id}/start`)).status(), 'cannot start twice').toBe(409);
 
-      const notes = await api.put(`/api/v1/sessions/${session.id}/patient-notes`, { data: { notes: 'e2e note' } });
-      expect([200, 422]).toContain(notes.status());
+      expect((await api.put(`/api/v1/sessions/${session.id}/patient-notes`, { data: { notes: 'e2e note' } })).status()).toBe(422);
+      const notes = await api.put(`/api/v1/sessions/${session.id}/patient-notes`, { data: { patient_notes: 'e2e note' } });
+      expect(notes.status(), await notes.text()).toBe(200);
 
       const completed = await api.post(`/api/v1/sessions/${session.id}/complete`);
       expect(completed.status(), await completed.text()).toBe(200);

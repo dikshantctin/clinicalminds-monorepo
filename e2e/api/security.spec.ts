@@ -66,7 +66,7 @@ test.describe('tenant isolation', () => {
   test("another tenant's resources are not readable", async ({ api }) => {
     for (const path of [`/api/v1/tenants/${RANDOM_UUID}`, `/api/v1/tenants/${RANDOM_UUID}/users`, `/api/v1/tenants/${RANDOM_UUID}/features`]) {
       const res = await api.get(path);
-      expect([403, 404], `${path} → ${res.status()}`).toContain(res.status());
+      expect(res.status(), path).toBe(403);
     }
   });
 

@@ -70,6 +70,6 @@ test.describe('/api/v1/patients', () => {
 
   test('POST /patients/set-password rejects a bad invite token', async ({ anon }) => {
     const res = await anon.post('/api/v1/patients/set-password', { data: { token: 'bogus', password: 'password123' } });
-    expect([400, 422]).toContain(res.status());
+    expect(res.status()).toBe(400);
   });
 });
