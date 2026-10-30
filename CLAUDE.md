@@ -200,3 +200,35 @@ Any feature or bugfix that changes user-visible behavior or an API contract ship
 
 - One branch + PR per change; never commit straight to `main`. Small, focused commits.
 - Submodules: commit and push the submodule branch **first**, then commit the new pointer in the monorepo.
+- Several Claude sessions may share one checkout. Do your work in a `git worktree`, check
+  `git branch --show-current` right before committing, and push with an explicit refspec
+  (`git push origin HEAD:<branch>`). A session switching the shared checkout's branch once sent a commit to the wrong branch.
+
+## CI/CD
+
+There is CI only, no deployment pipeline. Three GitHub Actions workflows:
+
+| Repo | Workflow | Trigger | Runs |
+|---|---|---|---|
+| `backend` | `.github/workflows/ci.yml` | push, PR | Postgres service → `create_all` via `import main` → `make check` (ruff, mypy, pytest) |
+| `frontend` | `.github/workflows/ci.yml` | push, PR | `npm ci` → `make check` (lint, type-check, build) |
+| monorepo | `.github/workflows/e2e.yml` | PR, manual | checkout with submodules → Postgres + Redis → backend on :8000 (`create_all`, `alembic stamp head`) → `setup_demo_data.py` + `demo_data.py import` → Vite on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
+
+Merge order for a change spanning repos: backend PR (green) → frontend PR (green) → monorepo PR that bumps the
+submodule pointers (its e2e runs against exactly those commits). A pointer must name a commit on the submodule's
+`main` after merge (merge with a merge commit, not squash, or the pinned commit is orphaned).
+
+Rules learned the hard way:
+- **CI starts from an empty database.** Tests create every row they need (users included) and clean up after
+  themselves; never read "some existing user" from the dev DB.
+- **Every import must be in `requirements.txt` / `package.json`.** The local venv / `node_modules` hides missing
+  dependencies; CI does not (`aiohttp` was missing).
+- **A new required `Settings` field must be added to both** `backend/.github/workflows/ci.yml` (`env:`) and the
+  `.env` heredoc in `e2e.yml`, or the backend fails to start in CI.
+- **Secret `SUBMODULES_TOKEN`** (monorepo → Settings → Secrets → Actions) lets `e2e.yml` clone the private
+  submodules. Use a **classic** PAT with the `repo` scope; the fine-grained token kept getting 403. Set it with
+  `gh secret set SUBMODULES_TOKEN -R dikshantctin/clinicalminds-monorepo` (value only, no `NAME=` prefix).
+  Checkout 403 on the submodules = token lacks access; `could not read Username` = the secret holds a revoked token.
+- Read failures with `gh run view <id> -R dikshantctin/<repo> --log-failed`; re-run with `gh run rerun <id>`.
+- Known flaky e2e specs (shared demo data, parallel workers): `api/patients.spec.ts` stats-vs-list totals and
+  `api/payments.spec.ts` slot hold. A failure there is re-run once, not "fixed" by loosening asserts.
