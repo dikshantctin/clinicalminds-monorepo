@@ -10,7 +10,7 @@ area you are changing, it holds the verified details (routes, models, defects, t
 
 | Path | Repo | What | Docs |
 |---|---|---|---|
-| `backend/` | `dikshantctin/clinicalminds-backend` | FastAPI + PostgreSQL (database-per-tenant), JWT auth, self-booking + per-clinic payments, follow-up queue | `backend/CLAUDE.md` |
+| `backend/` | `dikshantctin/clinicalminds-backend` | FastAPI + PostgreSQL (platform DB + shared tenant DB), JWT auth, self-booking + per-clinic payments, follow-up queue | `backend/CLAUDE.md` |
 | `frontend/` | `dikshantctin/clinicalminds-frontend` | React 18 / TypeScript / Vite / Tailwind | `frontend/CLAUDE.md` |
 | `deidentification-service/` | `dikshantctin/clinicalminds-deidentification` | HIPAA PHI de-identification microservice (:8002) | `deidentification-service/CLAUDE.md` |
 | `e2e/` | (this repo) | Playwright suite for backend API, frontend UI and de-id service | `e2e/README.md` |
@@ -72,7 +72,8 @@ Two database layers coexist (see `backend/CLAUDE.md` → Architecture for the ve
 `clinical_mind_platform` managed by `MultiTenantDatabaseManager`; **all tenant data** (patients,
 sessions, kanban, teams, schedules, tenants, catalog, analytics) lives in the `DATABASE_URL` database
 through the older `DatabaseManager` (schema-per-tenant via `search_path`, rows scoped by `tenant_id`).
-The per-tenant `clinical_mind_tenant_*` databases are created at onboarding but nothing reads them yet.
+There is no database per clinic: onboarding stopped creating `clinical_mind_tenant_*` databases (nothing read
+them); `backend/scripts/drop_unused_tenant_databases.py` lists the old ones and `--apply` drops them.
 Onboarding writes users to both layers with the same user id.
 
 **Key points:**
@@ -90,7 +91,7 @@ Onboarding writes users to both layers with the same user id.
 app/
 ├── api/v1/              # Routers: auth, otp, onboarding, verification, public_booking, patients, sessions,
 │                        #   schedules, analytics (GET overview only), tenants, catalog, teams, kanban, payments
-├── core/multi_database_manager.py  # database-per-tenant
+├── core/multi_database_manager.py  # platform (identity) database
 ├── models/              # platform.py (platform DB), database.py (legacy + tenant), kanban/team/appointment/audit models
 ├── schemas/             # Pydantic models (kanban, team, tenant, onboarding, permissions, appointment)
 ├── services/            # Business logic
