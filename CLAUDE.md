@@ -223,7 +223,7 @@ There is CI only, no deployment pipeline. Three GitHub Actions workflows:
 |---|---|---|---|
 | `backend` | `.github/workflows/ci.yml` | push to `main`, PR | Postgres service → `create_all` via `import main` → `make check` (ruff, mypy, pytest) |
 | `frontend` | `.github/workflows/ci.yml` | push to `main`, PR | `npm ci` → `make check` (lint, build — `build` runs `tsc`) |
-| monorepo | `.github/workflows/e2e.yml` | PR, push to `main` (both skip Markdown-only changes), manual | checkout with submodules → Postgres → backend on :8000 (`create_all`, `alembic stamp head`) → `setup_demo_data.py` + `demo_data.py import` → Vite on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
+| monorepo | `.github/workflows/e2e.yml` | PR, push to `main` (both skip Markdown-only changes), manual | checkout with submodules → Postgres → backend on :8000 (`create_all`, `alembic stamp head`) → `setup_demo_data.py` + `demo_data.py import` → `vite build` + `vite preview` on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
 
 Merge order for a change spanning repos: backend PR (green) → frontend PR (green) → monorepo PR that bumps the
 submodule pointers (its e2e runs against exactly those commits). A pointer must name a commit on the submodule's
