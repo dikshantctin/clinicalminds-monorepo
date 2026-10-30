@@ -69,10 +69,13 @@ playwright.config.ts   projects api / web, dotenv, reporters
 global-setup.ts        service probes + API login + storage state
 src/env.ts             URLs, credentials, reachable(), uniq()
 src/fixtures.ts        test/expect + fixtures: api (authed), anon, auth; require*() skip helpers
+src/outbox.ts          reads the backend's dev email outbox (EMAIL_OUTBOX_DIR in backend/.env): invite links
 src/pages/             page objects (login, dashboard nav + headings, add-patient form)
 api/                   health, auth, security (guards, tenant isolation, permissions),
                        role-access (table: route × role → exact 401/403/200; PATIENT needs a seeded
-                       patient.demo@democlinic.com login), patients, sessions (offsets, paging, filters, edit),
+                       patient.demo@democlinic.com login), patient-portal (invite → set password → portal
+                       login; the login audience picks staff vs PATIENT; an invite never overwrites a password),
+                       patients, sessions (offsets, paging, filters, edit),
                        schedules (daily schedule in the clinic time zone),
                        kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
@@ -86,7 +89,7 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        sweep, desk payments → revenue, clinician scope (logs in as the seeded psychologist, skips if
                        that login is blocked); sessions covers cancel/no-show guards and the clinician risk flag → queue,
                        followups (missed session → card, idempotent sync, closed cards stay closed), deid
-web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding,
+web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
