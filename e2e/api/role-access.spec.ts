@@ -252,3 +252,89 @@ test.describe('role access: clinicians see only patients assigned to them', () =
     }
   });
 });
+
+test.describe('role access: staff see every board, but change only what is theirs', () => {
+  requireApi();
+  requireAuth();
+
+  test("a therapist cannot change the admin's board or a colleague's task; the assignee and team members can", async ({ api }) => {
+    const therapist = await loginAs(DEMO_THERAPIST);
+    const psych = await loginAs(DEMO_PSYCHOLOGIST);
+    const boardRes = await api.post('/api/v1/kanban/boards', { data: { name: uniq('RoleBoard') } });
+    expect(boardRes.status(), await boardRes.text()).toBe(200);
+    const board = await boardRes.json();
+    const team = await (await api.post('/api/v1/teams/teams', {
+      data: { name: uniq('RoleBoardTeam'), description: 'e2e', team_type: 'CLINICAL', color: '#3B82F6', max_members: 10 },
+    })).json();
+    try {
+      const newTask = async (data: object) => {
+        const res = await api.post('/api/v1/kanban/tasks', { data: { board_id: board.id, title: uniq('RoleTask'), ...data } });
+        expect(res.status(), await res.text()).toBe(200);
+        return res.json();
+      };
+      const psychTask = await newTask({ assigned_to_user: psych.userId });
+      const teamTask = await newTask({ assigned_to_team: team.id });
+
+      // anyone on staff can look
+      expect((await therapist.ctx.get(`/api/v1/kanban/tasks/${psychTask.id}`)).status()).toBe(200);
+
+      // a colleague's card: no update, move or delete
+      const put = await therapist.ctx.put(`/api/v1/kanban/tasks/${psychTask.id}`, { data: { title: 'hijacked' } });
+      expect(put.status(), await put.text()).toBe(403);
+      const move = await therapist.ctx.post(`/api/v1/kanban/tasks/${psychTask.id}/move`, { data: { status: 'done', position: 0 } });
+      expect(move.status(), await move.text()).toBe(403);
+      expect((await therapist.ctx.delete(`/api/v1/kanban/tasks/${psychTask.id}`)).status()).toBe(403);
+      // nor the admin's board
+      expect((await therapist.ctx.put(`/api/v1/kanban/boards/${board.id}`, { data: { name: 'hijacked' } })).status()).toBe(403);
+      expect((await therapist.ctx.delete(`/api/v1/kanban/boards/${board.id}`)).status()).toBe(403);
+      const unchanged = await (await api.get(`/api/v1/kanban/tasks/${psychTask.id}`)).json();
+      expect(unchanged.title).toBe(psychTask.title);
+      expect(unchanged.status).toBe(psychTask.status);
+
+      // the assignee works the card, but deleting it is for its creator or a manager
+      const psychMove = await psych.ctx.post(`/api/v1/kanban/tasks/${psychTask.id}/move`, { data: { status: 'in_progress', position: 0 } });
+      expect(psychMove.status(), await psychMove.text()).toBe(200);
+      expect((await psych.ctx.put(`/api/v1/kanban/tasks/${psychTask.id}`, { data: { priority: 'high' } })).status()).toBe(200);
+      expect((await psych.ctx.delete(`/api/v1/kanban/tasks/${psychTask.id}`)).status()).toBe(403);
+
+      // a team card: refused until the therapist joins the team
+      expect((await therapist.ctx.put(`/api/v1/kanban/tasks/${teamTask.id}`, { data: { priority: 'high' } })).status()).toBe(403);
+      const join = await api.post(`/api/v1/teams/teams/${team.id}/members`, { data: { user_id: therapist.userId, role: 'MEMBER' } });
+      expect(join.status(), await join.text()).toBe(200);
+      const teamPut = await therapist.ctx.put(`/api/v1/kanban/tasks/${teamTask.id}`, { data: { priority: 'high' } });
+      expect(teamPut.status(), await teamPut.text()).toBe(200);
+
+      // the admin can do anything, including deleting a card whose assignment sent notifications
+      expect((await api.delete(`/api/v1/kanban/tasks/${psychTask.id}`)).status()).toBe(200);
+      // …and hard-deleting a board whose cards have notifications and activity
+      const hard = await api.delete(`/api/v1/kanban/boards/${board.id}?hard_delete=true`);
+      expect(hard.status(), await hard.text()).toBe(200);
+      expect((await api.get(`/api/v1/kanban/tasks/${teamTask.id}`)).status()).toBe(404);
+    } finally {
+      await therapist.ctx.dispose();
+      await psych.ctx.dispose();
+      await api.delete(`/api/v1/kanban/boards/${board.id}`);
+      await api.delete(`/api/v1/teams/teams/${team.id}`);
+    }
+  });
+
+  test('a clinician manages their own board and cards, but only a manager may hard-delete a board', async ({ api }) => {
+    const therapist = await loginAs(DEMO_THERAPIST);
+    const boardRes = await therapist.ctx.post('/api/v1/kanban/boards', { data: { name: uniq('OwnBoard') } });
+    expect(boardRes.status(), await boardRes.text()).toBe(200);
+    const board = await boardRes.json();
+    try {
+      const taskRes = await therapist.ctx.post('/api/v1/kanban/tasks', { data: { board_id: board.id, title: uniq('OwnTask') } });
+      expect(taskRes.status(), await taskRes.text()).toBe(200);
+      const task = await taskRes.json();
+      expect((await therapist.ctx.put(`/api/v1/kanban/tasks/${task.id}`, { data: { priority: 'high' } })).status()).toBe(200);
+      expect((await therapist.ctx.delete(`/api/v1/kanban/tasks/${task.id}`)).status()).toBe(200);
+      expect((await therapist.ctx.put(`/api/v1/kanban/boards/${board.id}`, { data: { description: 'mine' } })).status()).toBe(200);
+      expect((await therapist.ctx.delete(`/api/v1/kanban/boards/${board.id}?hard_delete=true`)).status()).toBe(403);
+      expect((await therapist.ctx.delete(`/api/v1/kanban/boards/${board.id}`)).status()).toBe(200);
+    } finally {
+      await therapist.ctx.dispose();
+      await api.delete(`/api/v1/kanban/boards/${board.id}`);
+    }
+  });
+});
