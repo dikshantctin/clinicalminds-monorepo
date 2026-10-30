@@ -218,6 +218,54 @@ test.describe('public booking paid into the clinic\'s Razorpay account', () => {
     }
   });
 
+  test('paying at the desk settles the open online order; a late online capture is not counted twice', async ({ anon, api, auth }) => {
+    const { ready } = await gateway(api);
+    test.skip(!ready, NO_GATEWAY);
+    const cfg = await (await api.get('/api/v1/payments/config')).json();
+    const WEBHOOK_SECRET = 'e2e-webhook-secret-0001'; // the same secret the webhook spec stores
+    const saved = await api.put('/api/v1/payments/config', { data: { key_id: cfg.key_id, enabled: true, webhook_secret: WEBHOOK_SECRET } });
+    expect(saved.status(), await saved.text()).toBe(200);
+
+    const svc = await service(api, 1);
+    const { conf } = await bookASlot(anon, auth.firmCode, svc.id);
+    expect(conf.payment_status).toBe('pending');
+    try {
+      // the patient walks in and pays cash while the online order is still open
+      const desk = await api.post(`/api/v1/sessions/${conf.session_id}/payments`, { data: { amount_paise: 100, method: 'cash' } });
+      expect(desk.status(), await desk.text()).toBe(200);
+      let rows = await (await api.get(`/api/v1/sessions/${conf.session_id}/payments`)).json();
+      expect(rows.map((p: { provider: string; status: string }) => `${p.provider}:${p.status}`).sort()).toEqual(['manual:paid', 'razorpay:expired']);
+      let detail = await (await api.get(`/api/v1/sessions/${conf.session_id}`)).json();
+      expect(detail).toEqual(expect.objectContaining({ status: 'scheduled', payment_status: 'paid' }));
+
+      // the patient had also paid online: the capture is recorded on the order but not as a second paid row
+      const url = `/api/v1/public/booking/${auth.firmCode}/payments/webhook`;
+      const sign = (body: string) => createHmac('sha256', WEBHOOK_SECRET).update(body).digest('hex');
+      const paymentId = uniq('pay_e2e_dup');
+      const captured = JSON.stringify({
+        event: 'payment.captured',
+        payload: { payment: { entity: { id: paymentId, order_id: conf.payment.order_id, amount: 100, currency: 'INR' } } },
+      });
+      const headers = { 'content-type': 'application/json', 'x-razorpay-signature': sign(captured) };
+      const late = await anon.post(url, { data: captured, headers });
+      expect(late.status(), await late.text()).toBe(200);
+      expect(await late.json()).toEqual({ status: 'duplicate', changed: true });
+      const again = await anon.post(url, { data: captured, headers });
+      expect(await again.json()).toEqual({ status: 'duplicate', changed: false });
+
+      rows = await (await api.get(`/api/v1/sessions/${conf.session_id}/payments`)).json();
+      expect(rows.filter((p: { status: string }) => p.status === 'paid')).toEqual([expect.objectContaining({ provider: 'manual', amount_paise: 100 })]);
+      detail = await (await api.get(`/api/v1/sessions/${conf.session_id}`)).json();
+      expect(detail).toEqual(expect.objectContaining({ status: 'scheduled', payment_status: 'paid' }));
+      expect(detail.session_notes).toContain('already paid at the desk');
+
+      // a second desk payment is still refused
+      expect((await api.post(`/api/v1/sessions/${conf.session_id}/payments`, { data: { amount_paise: 100, method: 'cash' } })).status()).toBe(409);
+    } finally {
+      await api.post(`/api/v1/sessions/${conf.session_id}/cancel`, { data: { reason: 'e2e cleanup' } });
+    }
+  });
+
   // NB: the "clinic disabled its gateway → priced bookings are not charged" path is NOT tested here.
   // It would have to flip the demo clinic's single shared gateway off/on, which races every other
   // booking under fullyParallel. The server rule is small — `_gateway` returns None when is_enabled is
