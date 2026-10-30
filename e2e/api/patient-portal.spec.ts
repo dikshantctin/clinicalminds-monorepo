@@ -86,6 +86,30 @@ test.describe('patient portal: invite a new email', () => {
     }
   });
 
+  test('POST /auth/set-password (the route the set-password page posts to) behaves like /patients/set-password', async ({ api }) => {
+    const patientId = await createPatient(api);
+    const email = `${uniq('portal-ui')}@example.com`.toLowerCase();
+    try {
+      expect((await invite(api, patientId, email)).status).toBe(200);
+      const token = inviteTokenFor(email);
+
+      const set = await api.post('/api/v1/auth/set-password', { data: { token, password: PASSWORD } });
+      expect(set.status(), await set.text()).toBe(200);
+      // no token here: it used to mint one for "patient@example.com" with both channels marked verified
+      expect(await set.json()).toEqual({ message: 'Password set successfully' });
+
+      const again = await api.post('/api/v1/auth/set-password', { data: { token, password: 'Another123!' } });
+      expect(again.status()).toBe(400);
+      expect(msg(await again.json())).toBe('Account already has a password');
+
+      const portal = await login(email, PASSWORD, 'patient');
+      expect(portal.status, JSON.stringify(portal.body)).toBe(200);
+      expect(portal.body.user).toEqual(expect.objectContaining({ email, role: 'PATIENT' }));
+    } finally {
+      await api.delete(`/api/v1/patients/${patientId}`);
+    }
+  });
+
   test('an email already linked to another active patient record in this clinic → 409', async ({ api }) => {
     const first = await createPatient(api);
     const second = await createPatient(api);
