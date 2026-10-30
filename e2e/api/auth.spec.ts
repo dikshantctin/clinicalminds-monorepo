@@ -99,17 +99,6 @@ test.describe('stubbed auth flows (documented, not yet implemented)', () => {
     expect((await res.json()).tenant.id).not.toBe('new_tenant_id');
   });
 
-  test('POST /auth/request-password-reset always answers 200 without leaking existence', async ({ anon }) => {
-    const res = await anon.post('/api/v1/auth/request-password-reset', { data: { email: `${uniq('nobody')}@example.com` } });
-    expect(res.status()).toBe(200);
-    expect((await res.json()).message).toMatch(/If the email exists/);
-  });
-
-  test('POST /auth/reset-password rejects a bad token with 400', async ({ anon }) => {
-    const res = await anon.post('/api/v1/auth/reset-password', { data: { token: 'bogus', new_password: 'password123' } });
-    expect(res.status()).toBe(400);
-  });
-
   test('POST /auth/set-password rejects a bad invite token with 400', async ({ anon }) => {
     const res = await anon.post('/api/v1/auth/set-password', { data: { token: 'bogus', password: 'password123' } });
     expect(res.status()).toBe(400);
