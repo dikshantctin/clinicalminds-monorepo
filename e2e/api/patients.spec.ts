@@ -64,12 +64,18 @@ test.describe('/api/v1/patients', () => {
       stats: await (await ctx.get('/api/v1/patients/stats')).json(),
     });
 
-    const admin = await totals(api);
-    expect(admin.stats.total_patients).toBe(admin.all);
-    expect(admin.stats.active_patients).toBe(admin.active);
-    const queue = await (await api.get('/api/v1/kanban/followups')).json();
-    const flagged = new Set(queue.items.map((t: { related_patient_id: string | null }) => t.related_patient_id).filter(Boolean));
-    expect(admin.stats.patients_needing_follow_up).toBe(flagged.size);
+    // Other workers add and deactivate patients in the same clinic, so the stats and the list totals are
+    // separate reads of a moving count: retry until one consistent snapshot. Hard-coded numbers never match.
+    let adminTotal = 0;
+    await expect(async () => {
+      const admin = await totals(api);
+      expect(admin.stats.total_patients).toBe(admin.all);
+      expect(admin.stats.active_patients).toBe(admin.active);
+      const queue = await (await api.get('/api/v1/kanban/followups')).json();
+      const flagged = new Set(queue.items.map((t: { related_patient_id: string | null }) => t.related_patient_id).filter(Boolean));
+      expect(admin.stats.patients_needing_follow_up).toBe(flagged.size);
+      adminTotal = admin.stats.total_patients;
+    }).toPass({ timeout: 15_000 });
 
     const login = await api.post('/api/v1/auth/login', { data: DEMO_THERAPIST });
     const therapist = await pwRequest.newContext({
@@ -77,10 +83,12 @@ test.describe('/api/v1/patients', () => {
       extraHTTPHeaders: { Authorization: `Bearer ${(await login.json()).access_token}` },
     });
     try {
-      const own = await totals(therapist);
-      expect(own.stats.total_patients).toBe(own.all);
-      expect(own.stats.active_patients).toBe(own.active);
-      expect(own.stats.total_patients).toBeLessThan(admin.stats.total_patients);
+      await expect(async () => {
+        const own = await totals(therapist);
+        expect(own.stats.total_patients).toBe(own.all);
+        expect(own.stats.active_patients).toBe(own.active);
+        expect(own.stats.total_patients).toBeLessThan(adminTotal);
+      }).toPass({ timeout: 15_000 });
     } finally {
       await therapist.dispose();
     }

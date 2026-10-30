@@ -50,7 +50,11 @@ test.describe('public booking page (/book/<firmCode>)', () => {
       const clinicPage = await clinic.newPage();
       await clinicPage.goto('/dashboard/sessions');
       await expect(clinicPage.getByTestId('booking-link')).toContainText(`/book/${auth.firmCode}`);
-      await expect(clinicPage.getByTestId('booked-online').first()).toBeVisible({ timeout: 15_000 });
+      // the list is paged on the server: search narrows it to the booking's patient (the booking may
+      // attach to an existing record with the same phone, so read the name back)
+      const { patient_name } = await (await api.get(`/api/v1/sessions/${reference}`)).json();
+      await clinicPage.getByRole('searchbox', { name: 'Search sessions' }).fill(patient_name);
+      await expect(clinicPage.locator('tr', { hasText: patient_name }).getByTestId('booked-online').first()).toBeVisible();
     } finally {
       await clinic.close();
       await api.post(`/api/v1/sessions/${reference}/cancel`, { data: { reason: 'e2e cleanup' } });

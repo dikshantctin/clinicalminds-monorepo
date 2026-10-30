@@ -46,6 +46,7 @@ lerna-debug.log*
 *.whl
 *.tar.gz
 package-lock.json
+!e2e/package-lock.json
 
 # ML Models and Data (LARGE FILES)
 models/
