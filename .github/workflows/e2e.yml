@@ -73,6 +73,7 @@ jobs:
           PAYMENTS_ENABLED=false
           ANTHROPIC_API_KEY=unused-in-ci
           OPENAI_API_KEY=unused-in-ci
+          EMAIL_OUTBOX_DIR=.email-outbox
           EOF
 
       - name: Install backend

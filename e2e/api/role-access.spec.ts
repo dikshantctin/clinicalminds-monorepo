@@ -13,7 +13,9 @@ type Session = { ctx: APIRequestContext; userId: string; tenantId: string };
 /** Logs in through the API and returns a request context that sends what the frontend sends. */
 async function loginAs(creds: Creds): Promise<Session> {
   const anon = await pwRequest.newContext({ baseURL: env.API_URL });
-  const res = await anon.post('/api/v1/auth/login', { data: creds });
+  // a patient logs in through the portal (audience "patient"); everyone else through the staff login
+  const audience = creds === DEMO_PATIENT ? 'patient' : 'staff';
+  const res = await anon.post('/api/v1/auth/login', { data: { ...creds, audience } });
   const text = await res.text();
   await anon.dispose();
   expect(res.status(), `login as ${creds.email} (seeded by backend/scripts/setup_demo_data.py?): ${text}`).toBe(200);
@@ -164,7 +166,7 @@ test.describe('role access: patient invite never hands out the set-password toke
       expect(text).not.toMatch(/eyJ[\w-]+\.[\w-]+\.[\w-]+/);
       // 200 when SMTP is configured, 503 when it is not (the UI must not claim "sent"); both bodies are exact
       if (res.status() === 200) {
-        expect(JSON.parse(text)).toEqual({ message: 'Invitation sent', email });
+        expect(JSON.parse(text)).toEqual({ message: 'Invitation sent', email, existing_account: false });
       } else {
         expect(res.status(), text).toBe(503);
         expect(JSON.parse(text).message ?? JSON.parse(text).detail).toBe('Invitation email could not be sent');
