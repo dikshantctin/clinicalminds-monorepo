@@ -12,14 +12,14 @@ const TEST_PHONE = '+919876543210'; // VERIFICATION_TEST_PHONES: no phone.email 
 const inDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 type Listed = { id: string; first_name: string; last_name: string };
 
-async function setup(anon: APIRequestContext, api: APIRequestContext, firmCode: string) {
+async function setup(anon: APIRequestContext, api: APIRequestContext, firmCode: string, day = 10) {
   const svc = await api.post('/api/v1/catalog/services', { data: { name: uniq('SharedPhone'), duration_minutes: 50, price: 0, currency: 'INR' } });
   expect(svc.status(), await svc.text()).toBe(201);
   const service = await svc.json();
   const info = await (await anon.get(`/api/v1/public/booking/${firmCode}`)).json();
   const practitioner = info.practitioners[0];
   const { slots } = await (await anon.get(`/api/v1/public/booking/${firmCode}/slots`, {
-    params: { practitioner_id: practitioner.id, service_id: service.id, date: inDays(10) },
+    params: { practitioner_id: practitioner.id, service_id: service.id, date: inDays(day) },
   })).json();
   expect(slots.length).toBeGreaterThanOrEqual(5); // 30-min slots, 50-min sessions: book every other slot
   return { service, practitioner, slots: slots as string[] };
@@ -80,7 +80,8 @@ test.describe('public booking on a shared phone number', () => {
   });
 
   test('a patient id from another number → 400; "someone else" without a name → 422; an unverified phone → 400', async ({ anon, api, auth }) => {
-    const { service, practitioner, slots } = await setup(anon, api, auth.firmCode);
+    // a different day from the test above: the slot check runs before the patient check, and these run in parallel
+    const { service, practitioner, slots } = await setup(anon, api, auth.firmCode, 12);
     const elsewhere = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Elsewhere'), last_name: 'Patient', phone: '+919811100000' } })).json();
     try {
       const wrong = await anon.post(`/api/v1/public/booking/${auth.firmCode}`, {
