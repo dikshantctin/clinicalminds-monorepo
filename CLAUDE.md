@@ -186,6 +186,17 @@ the root `Makefile` runs both (`make check`) and the Playwright suite (`make e2e
 until you have run `make check` in every submodule you touched **and** the relevant Playwright specs
 (`cd e2e && npx playwright test <spec>`) against a running stack, and read the output. A skipped spec is not a pass.
 
+## Reuse before adding
+
+Before adding a column, table, migration, setting, endpoint, helper or script, prove it doesn't already exist:
+- grep the models, schemas, `alembic/versions/`, `config/settings.py`, `app/services/` and `scripts/`;
+- check the **live** databases (`clinical_mind_platform` and the `DATABASE_URL` one) via `information_schema.columns`,
+  since they can hold columns the models don't declare;
+- check JSONB columns (e.g. `platform_firms.settings`) for existing keys, and prefer a JSONB key over a new column
+  when the value needs no index, constraint or join.
+
+State what was checked and found in the plan. Extend what exists; add new schema only when nothing fits.
+
 ## Tests with every feature
 
 Any feature or bugfix that changes user-visible behavior or an API contract ships with a Playwright spec in
