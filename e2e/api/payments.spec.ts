@@ -1,3 +1,4 @@
+import { createHmac } from 'crypto';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
 
@@ -144,7 +145,7 @@ test.describe('public booking paid into the clinic\'s Razorpay account', () => {
       const still = await (await api.get(`/api/v1/sessions/${conf.session_id}`)).json();
       expect(still.payment_status).toBe('pending');
     } finally {
-      await api.put(`/api/v1/sessions/${conf.session_id}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
+      await api.post(`/api/v1/sessions/${conf.session_id}/cancel`, { data: { reason: 'e2e cleanup' } });
     }
   });
 
@@ -157,7 +158,63 @@ test.describe('public booking paid into the clinic\'s Razorpay account', () => {
       expect(conf.payment).toBeNull();
       expect(conf.payment_status).toBeNull();
     } finally {
-      await api.put(`/api/v1/sessions/${conf.session_id}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
+      await api.post(`/api/v1/sessions/${conf.session_id}/cancel`, { data: { reason: 'e2e cleanup' } });
+    }
+  });
+
+  test('a signed payment.captured webhook marks the order paid without the browser; refunds are recorded; bad signatures are refused', async ({ anon, api, auth }) => {
+    const { ready } = await gateway(api);
+    test.skip(!ready, NO_GATEWAY);
+    const cfg = await (await api.get('/api/v1/payments/config')).json();
+    expect(cfg.webhook_url).toBe(`${new URL(cfg.webhook_url).origin}/api/v1/public/booking/${auth.firmCode}/payments/webhook`);
+    // store a webhook secret on the demo clinic's gateway (the key pair is kept; the secret is never echoed)
+    const WEBHOOK_SECRET = 'e2e-webhook-secret-0001';
+    const saved = await api.put('/api/v1/payments/config', { data: { key_id: cfg.key_id, enabled: true, webhook_secret: WEBHOOK_SECRET } });
+    expect(saved.status(), await saved.text()).toBe(200);
+    expect(await saved.json()).toEqual(expect.objectContaining({ webhook_configured: true }));
+    expect(JSON.stringify(await saved.json())).not.toContain(WEBHOOK_SECRET);
+
+    const svc = await service(api, 1);
+    const { conf } = await bookASlot(anon, auth.firmCode, svc.id);
+    const url = `/api/v1/public/booking/${auth.firmCode}/payments/webhook`;
+    const sign = (body: string, secret = WEBHOOK_SECRET) => createHmac('sha256', secret).update(body).digest('hex');
+    const paymentId = uniq('pay_e2e'); // real Razorpay payment ids are unique; so are ours across runs
+    const captured = JSON.stringify({
+      event: 'payment.captured',
+      payload: { payment: { entity: { id: paymentId, order_id: conf.payment.order_id, amount: 100, currency: 'INR' } } },
+    });
+    try {
+      // wrong secret → 400 and nothing changes
+      const forged = await anon.post(url, { data: captured, headers: { 'content-type': 'application/json', 'x-razorpay-signature': sign(captured, 'wrong') } });
+      expect(forged.status()).toBe(400);
+      expect((await (await api.get(`/api/v1/sessions/${conf.session_id}`)).json()).payment_status).toBe('pending');
+
+      const ok = await anon.post(url, { data: captured, headers: { 'content-type': 'application/json', 'x-razorpay-signature': sign(captured) } });
+      expect(ok.status(), await ok.text()).toBe(200);
+      expect(await ok.json()).toEqual({ status: 'paid', changed: true });
+      expect((await (await api.get(`/api/v1/sessions/${conf.session_id}`)).json()).payment_status).toBe('paid');
+      // redelivery is idempotent
+      const again = await anon.post(url, { data: captured, headers: { 'content-type': 'application/json', 'x-razorpay-signature': sign(captured) } });
+      expect(await again.json()).toEqual({ status: 'paid', changed: false });
+
+      // a partial refund keeps it paid; a full one flips it
+      const refund = (id: string, amount: number) =>
+        JSON.stringify({ event: 'refund.processed', payload: { refund: { entity: { id, payment_id: paymentId, amount } } } });
+      const r1 = refund(uniq('rfnd_e2e_1'), 40);
+      expect((await anon.post(url, { data: r1, headers: { 'content-type': 'application/json', 'x-razorpay-signature': sign(r1) } })).status()).toBe(200);
+      let rows = await (await api.get(`/api/v1/sessions/${conf.session_id}/payments`)).json();
+      expect(rows[0]).toEqual(expect.objectContaining({ status: 'paid', refunded_paise: 40 }));
+      const r2 = refund(uniq('rfnd_e2e_2'), 60);
+      expect((await anon.post(url, { data: r2, headers: { 'content-type': 'application/json', 'x-razorpay-signature': sign(r2) } })).status()).toBe(200);
+      rows = await (await api.get(`/api/v1/sessions/${conf.session_id}/payments`)).json();
+      expect(rows[0]).toEqual(expect.objectContaining({ status: 'refunded', refunded_paise: 100 }));
+      expect((await (await api.get(`/api/v1/sessions/${conf.session_id}`)).json()).payment_status).toBe('refunded');
+
+      // unknown events are acknowledged, unknown orders ignored
+      const other = JSON.stringify({ event: 'order.paid', payload: {} });
+      expect(await (await anon.post(url, { data: other, headers: { 'content-type': 'application/json', 'x-razorpay-signature': sign(other) } })).json()).toEqual({ ignored: true, event: 'order.paid' });
+    } finally {
+      await api.post(`/api/v1/sessions/${conf.session_id}/cancel`, { data: { reason: 'e2e cleanup' } });
     }
   });
 

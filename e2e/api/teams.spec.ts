@@ -32,7 +32,8 @@ test.describe('/api/v1/teams', () => {
       expect(users.status()).toBe(200);
 
       const member = await api.post(`/api/v1/teams/teams/${team.id}/members`, { data: { user_id: auth.user?.id, role: 'MEMBER' } });
-      expect([200, 400, 409], await member.text()).toContain(member.status()); // 400/409 if the creator is auto-added
+      expect(member.status(), await member.text()).toBe(400); // the creator is auto-added
+      expect((await member.json()).message).toBe('User is already a team member');
 
       const updated = await api.put(`/api/v1/teams/teams/${team.id}`, { data: { description: 'updated by e2e' } });
       expect(updated.status(), await updated.text()).toBe(200);

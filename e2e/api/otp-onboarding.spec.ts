@@ -12,12 +12,12 @@ test.describe('/api/v1/onboarding (public)', () => {
 
   test('POST /onboarding/validate rejects an empty payload', async ({ anon }) => {
     const res = await anon.post('/api/v1/onboarding/validate', { data: {} });
-    expect([400, 422]).toContain(res.status());
+    expect(res.status()).toBe(422);
   });
 
   test('POST /onboarding/complete rejects an empty payload', async ({ anon }) => {
     const res = await anon.post('/api/v1/onboarding/complete', { data: {} });
-    expect([400, 422]).toContain(res.status());
+    expect(res.status()).toBe(422);
   });
 });
 
@@ -36,7 +36,7 @@ test.describe('/api/v1/otp', () => {
 
   test('verify with a wrong code is rejected', async ({ api }) => {
     const res = await api.post('/api/v1/otp/verify', { data: { email: `${uniq('otp')}@example.com`, otp: '000000', type: 'email' } });
-    expect([400, 404, 422], await res.text()).toContain(res.status());
+    expect(res.status(), await res.text()).toBe(400);
   });
 
   test('generate sends an email OTP', async ({ api }) => {

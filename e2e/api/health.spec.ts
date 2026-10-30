@@ -12,8 +12,6 @@ test.describe('GET /health', () => {
     expect(body.services).toEqual(
       expect.objectContaining({
         database: expect.any(String),
-        ai_router: expect.stringMatching(/^(active|inactive)$/),
-        crisis_detector: expect.stringMatching(/^(active|inactive)$/),
       }),
     );
   });

@@ -1,5 +1,5 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { env, uniq } from '../src/env';
+import { env, uniq, DEMO_PSYCHOLOGIST } from '../src/env';
 
 test.describe('POST /api/v1/auth/login', () => {
   requireApi();
@@ -49,6 +49,24 @@ test.describe('authenticated auth endpoints', () => {
     expect(me.role).toBe(auth.user?.role);
     expect(Array.isArray(me.permissions)).toBe(true);
     expect(me.permissions.length).toBeGreaterThan(0);
+  });
+
+  test('GET /auth/me returns the stored name, in the same snake_case shape as login', async ({ anon }) => {
+    const login = await anon.post('/api/v1/auth/login', { data: DEMO_PSYCHOLOGIST });
+    expect(login.status(), await login.text()).toBe(200);
+    const { access_token, user } = await login.json();
+    expect(user.first_name).not.toBe('dr'); // the seed's real name, not the email's local part
+
+    const res = await anon.get('/api/v1/auth/me', { headers: { Authorization: `Bearer ${access_token}` } });
+    expect(res.status()).toBe(200);
+    const me = await res.json();
+    expect(me).toEqual(expect.objectContaining({
+      id: user.id,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      full_name: `${user.first_name} ${user.last_name}`,
+      is_verified: user.is_verified,
+    }));
   });
 
   test('POST /auth/logout succeeds', async ({ api }) => {

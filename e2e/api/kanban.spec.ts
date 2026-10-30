@@ -37,12 +37,11 @@ test.describe('/api/v1/kanban', () => {
       expect(moved.status(), await moved.text()).toBe(200);
       expect((await api.get(`/api/v1/kanban/tasks/${task.id}`).then((r) => r.json())).status).toBe('in_progress');
 
-      const comment = await api.post(`/api/v1/kanban/tasks/${task.id}/comments`, { data: { content: 'e2e comment' } });
-      expect([200, 422], await comment.text()).toContain(comment.status());
-      if (comment.ok()) {
-        const comments = await api.get(`/api/v1/kanban/tasks/${task.id}/comments`);
-        expect(comments.status()).toBe(200);
-      }
+      const comment = await api.post(`/api/v1/kanban/tasks/${task.id}/comments`, { data: { task_id: task.id, content: 'e2e comment' } });
+      expect(comment.status(), await comment.text()).toBe(200);
+      const comments = await api.get(`/api/v1/kanban/tasks/${task.id}/comments`);
+      expect(comments.status()).toBe(200);
+      expect((await comments.json()).map((c: { content: string }) => c.content)).toContain('e2e comment');
 
       const updated = await api.put(`/api/v1/kanban/tasks/${task.id}`, { data: { priority: 'urgent', status: 'done' } });
       expect(updated.status(), await updated.text()).toBe(200);

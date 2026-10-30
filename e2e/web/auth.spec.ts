@@ -38,7 +38,7 @@ test.describe('login page', () => {
     const login = new LoginPage(page);
     await login.goto();
     await login.password.fill('secret');
-    await page.locator('#password ~ button, #password + button').first().click();
+    await page.getByRole('button', { name: 'Show password' }).click();
     await expect(login.password).toHaveAttribute('type', 'text');
   });
 
@@ -61,5 +61,18 @@ test.describe('login page', () => {
     await expect(page.getByRole('heading', { name: /Welcome back,/ })).toBeVisible();
     await expect.poll(() => page.evaluate(() => localStorage.getItem('auth_token'))).not.toBeNull();
     await expect.poll(() => page.evaluate(() => localStorage.getItem('tenant_id'))).not.toBeNull();
+  });
+
+  test('the stored name survives a reload (it used to come back as the email prefix)', async ({ page, anon }) => {
+    requireAuth();
+    const { user } = await (await anon.post('/api/v1/auth/login', { data: { email: env.EMAIL, password: env.PASSWORD } })).json();
+    const name = `${user.first_name} ${user.last_name}`;
+    const login = new LoginPage(page);
+    await login.goto();
+    await login.login(env.EMAIL, env.PASSWORD);
+    await expect(page.getByTestId('user-menu')).toHaveText(name);
+    await page.reload();
+    await expect(page.getByTestId('user-menu')).toHaveText(name);
+    expect(JSON.parse((await page.evaluate(() => localStorage.getItem('auth_user'))) ?? '{}').firstName).toBe(user.first_name);
   });
 });

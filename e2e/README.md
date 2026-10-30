@@ -28,7 +28,7 @@ Bring up the stack (see each component's `CLAUDE.md`):
 
 ```bash
 # backend
-cd ../backend && docker compose up -d postgres chromadb && python main.py
+cd ../backend && docker compose up -d postgres && python main.py
 python scripts/setup_demo_data.py        # with the server up: onboards demo@clinicalmind.com / Password123! (ADMIN)
                                          # (POSTs /api/v1/onboarding/complete — the only path that writes both DB layers)
 # frontend
@@ -70,20 +70,27 @@ global-setup.ts        service probes + API login + storage state
 src/env.ts             URLs, credentials, reachable(), uniq()
 src/fixtures.ts        test/expect + fixtures: api (authed), anon, auth; require*() skip helpers
 src/pages/             page objects (login, dashboard nav + headings, add-patient form)
-api/                   health, auth, security (guards, tenant isolation, permissions), patients, sessions,
-                       kanban, teams, crisis, tenants (+analytics/schedules/catalog), otp-onboarding,
+api/                   health, auth, security (guards, tenant isolation, permissions),
+                       role-access (table: route × role → exact 401/403/200; PATIENT needs a seeded
+                       patient.demo@democlinic.com login), patients, sessions,
+                       kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
+                       live numbers), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
                        booking (public self-booking: info, slots, booking → clinic + therapist lists, 409/400),
                        payments (the clinic's own Razorpay keys, read from the demo DB: role gate, 422/400 validation,
                        secret never returned; once the demo clinic is connected: Rs 1 booking → order on the clinic's
                        account, slot held, "pending" on the session, forged signature → 400, free service → no payment,
-                       gateway disabled → no payment),
+                       signed payment.captured / refund.processed webhooks → paid / refunded, bad signature → 400),
+                       overview also covers: no-show via POST …/no-show (status is not a PUT field), the 24 h stale
+                       sweep, desk payments → revenue, clinician scope (logs in as the seeded psychologist, skips if
+                       that login is blocked); sessions covers cancel/no-show guards and the clinician risk flag → queue,
                        followups (missed session → card, idempotent sync, closed cards stay closed), deid
 web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding,
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
                        never on the page; a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
+                       sessions also: mark no-show from the list, record a cash payment, save a risk flag on the detail page,
                        journey (serial, browser-only clinic day: admin publishes a service, registers a patient,
                        schedules a session → patient books online → therapist starts it → missed session shows on
                        the Follow-up queue; the one API shortcut moves a session into the past)
@@ -106,7 +113,8 @@ cd ../backend && python scripts/connect_demo_razorpay.py rzp_test_xxxxx <key_sec
 ```
 
 The payment specs read the stored account (only the **public** key id; never the secret) and **skip with a
-reason** until it is connected. `E2E_RAZORPAY_*` is optional and only drives the extra "validate a fresh
+reason** until it is connected. The webhook spec stores a fixed e2e webhook secret on the demo clinic's
+gateway (through `PUT /payments/config`) and signs its own deliveries with it; no public URL is needed. `E2E_RAZORPAY_*` is optional and only drives the extra "validate a fresh
 pair" write test.
 
 The actual payment cannot be automated (Razorpay Checkout is a vendor iframe), so to prove a real Rs 1 charge:
@@ -128,10 +136,7 @@ runs for real. Live status on 2026-10-28: 101 passed, 9 fixme, 5 skipped (de-id 
 | Spec | Reason |
 |---|---|
 | `api/auth.spec.ts` register | `auth.register` returns placeholder ids, never writes to DB (real signup is `/onboarding/complete`) |
-| `api/crisis.spec.ts` assess | `crisis_detector` dependency is `lambda: None` |
-| `api/crisis.spec.ts` unknown event id | crisis event endpoints return hard-coded mock data; any id "exists" |
 | `api/otp-onboarding.spec.ts` generate | needs SMTP credentials |
-| `api/security.spec.ts` permissions ×2 | `permissions.py` is unfinished and deliberately not mounted |
 | `api/tenants.spec.ts` usage/billing | `TenantUsage` model has no `tenant_id` column |
 
 Two Playwright processes must not share `test-results/` (you get `ENOENT … trace` errors, not real

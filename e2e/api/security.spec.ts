@@ -12,9 +12,8 @@ test.describe('authentication guard', () => {
     '/api/v1/sessions/',
     '/api/v1/kanban/boards',
     '/api/v1/teams/teams',
-    '/api/v1/crisis/events',
     '/api/v1/tenants/my-tenants',
-    '/api/v1/analytics/usage',
+    '/api/v1/analytics/overview',
     '/api/v1/otp/health',
   ];
 
@@ -67,7 +66,7 @@ test.describe('tenant isolation', () => {
   test("another tenant's resources are not readable", async ({ api }) => {
     for (const path of [`/api/v1/tenants/${RANDOM_UUID}`, `/api/v1/tenants/${RANDOM_UUID}/users`, `/api/v1/tenants/${RANDOM_UUID}/features`]) {
       const res = await api.get(path);
-      expect([403, 404], `${path} → ${res.status()}`).toContain(res.status());
+      expect(res.status(), path).toBe(403);
     }
   });
 
@@ -79,21 +78,3 @@ test.describe('tenant isolation', () => {
   });
 });
 
-test.describe('permissions', () => {
-  requireApi();
-  requireAuth();
-
-  const UNFINISHED = 'app/api/v1/permissions.py is unfinished (wrong require_permission signature, imports a non-existent get_user_permissions) and is deliberately not mounted → 404';
-
-  test('GET /permissions/roles/ lists role permissions', async ({ api }) => {
-    test.fixme(true, UNFINISHED);
-    const res = await api.get('/api/v1/permissions/roles/');
-    expect(res.status()).toBe(200);
-  });
-
-  test('GET /permissions/users/{id}/permissions returns the current user permissions', async ({ api, auth }) => {
-    test.fixme(true, UNFINISHED);
-    const res = await api.get(`/api/v1/permissions/users/${auth.user?.id}/permissions`);
-    expect(res.status()).toBe(200);
-  });
-});

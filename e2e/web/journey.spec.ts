@@ -51,6 +51,7 @@ test.describe('end-to-end clinic journey', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test('1. admin publishes a service, registers a patient and schedules a session', async ({ page }) => {
+    test.slow(); // ends on the sessions list, which renders every session of the clinic
     await loginAs(page, env.EMAIL, env.PASSWORD);
 
     // service (what patients can book)
@@ -82,15 +83,16 @@ test.describe('end-to-end clinic journey', () => {
     await page.getByRole('button', { name: 'Schedule Session' }).click();
     await expect(page.getByText('Session scheduled successfully!')).toBeVisible();
     await expect(page).toHaveURL(/\/dashboard\/sessions$/);
-    await expect(page.getByRole('row', { name: new RegExp(patientFullName) }).first()).toBeVisible();
+    // the sessions list renders every session of the clinic (hundreds on a long-lived dev DB)
+    await expect(page.getByRole('row', { name: new RegExp(patientFullName) }).first()).toBeVisible({ timeout: 20_000 });
   });
 
   test('2. the patient books a second slot through the public link', async ({ page, auth }) => {
     await page.goto(`/book/${auth.firmCode}`);
-    await page.getByRole('button', { name: new RegExp(serviceName) }).click();
-    await page.getByRole('button', { name: new RegExp(THERAPIST.name) }).click();
+    await page.getByRole('radio', { name: new RegExp(serviceName) }).click();
+    await page.getByRole('radio', { name: new RegExp(THERAPIST.name) }).click();
     await page.getByTestId('booking-date').fill(isoDate(2));
-    const slots = page.getByTestId('booking-slots').getByRole('button');
+    const slots = page.getByTestId('booking-slots').getByRole('radio');
     await expect(slots.first()).toBeVisible({ timeout: 15_000 });
     await slots.first().click();
     await page.getByTestId('booking-first-name').fill(run);
@@ -136,7 +138,7 @@ test.describe('end-to-end clinic journey', () => {
     const sessions = await (await api.get('/api/v1/sessions/', { params: { patient_id: patient.id, limit: 50 } })).json();
     for (const s of sessions.sessions) {
       if (s.status !== 'completed' && s.status !== 'cancelled') {
-        await api.put(`/api/v1/sessions/${s.id}`, { data: { status: 'cancelled', cancellation_reason: 'journey cleanup' } });
+        await api.post(`/api/v1/sessions/${s.id}/cancel`, { data: { reason: 'journey cleanup' } });
       }
     }
     await api.delete(`/api/v1/patients/${patient.id}`);

@@ -1,5 +1,6 @@
+import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { uniq, RANDOM_UUID } from '../src/env';
+import { env, uniq, RANDOM_UUID, DEMO_THERAPIST } from '../src/env';
 
 test.describe('/api/v1/patients', () => {
   requireApi();
@@ -56,19 +57,47 @@ test.describe('/api/v1/patients', () => {
     expect((await del.json()).message).toMatch(/deactivated/);
   });
 
-  test('GET /patients/stats returns counts', async ({ api }) => {
-    const res = await api.get('/api/v1/patients/stats');
-    expect(res.status()).toBe(200);
-    expect(typeof (await res.json())).toBe('object');
+  test('GET /patients/stats counts the caller\'s own rows (clinic for admin, own patients for a therapist)', async ({ api }) => {
+    const totals = async (ctx: APIRequestContext) => ({
+      all: (await (await ctx.get('/api/v1/patients/?include_inactive=true&limit=1')).json()).total,
+      active: (await (await ctx.get('/api/v1/patients/?limit=1')).json()).total,
+      stats: await (await ctx.get('/api/v1/patients/stats')).json(),
+    });
+
+    const admin = await totals(api);
+    expect(admin.stats.total_patients).toBe(admin.all);
+    expect(admin.stats.active_patients).toBe(admin.active);
+    const queue = await (await api.get('/api/v1/kanban/followups')).json();
+    const flagged = new Set(queue.items.map((t: { related_patient_id: string | null }) => t.related_patient_id).filter(Boolean));
+    expect(admin.stats.patients_needing_follow_up).toBe(flagged.size);
+
+    const login = await api.post('/api/v1/auth/login', { data: DEMO_THERAPIST });
+    const therapist = await pwRequest.newContext({
+      baseURL: env.API_URL,
+      extraHTTPHeaders: { Authorization: `Bearer ${(await login.json()).access_token}` },
+    });
+    try {
+      const own = await totals(therapist);
+      expect(own.stats.total_patients).toBe(own.all);
+      expect(own.stats.active_patients).toBe(own.active);
+      expect(own.stats.total_patients).toBeLessThan(admin.stats.total_patients);
+    } finally {
+      await therapist.dispose();
+    }
+  });
+
+  test('GET /patients/stats needs a token (401)', async ({ anon }) => {
+    expect((await anon.get('/api/v1/patients/stats')).status()).toBe(401);
   });
 
   test('unknown patient id → 404', async ({ api }) => {
     const res = await api.get(`/api/v1/patients/${RANDOM_UUID}`);
-    expect([404, 400]).toContain(res.status());
+    expect(res.status()).toBe(404);
+    expect((await api.get('/api/v1/patients/not-a-uuid')).status()).toBe(404);
   });
 
   test('POST /patients/set-password rejects a bad invite token', async ({ anon }) => {
     const res = await anon.post('/api/v1/patients/set-password', { data: { token: 'bogus', password: 'password123' } });
-    expect([400, 422]).toContain(res.status());
+    expect(res.status()).toBe(400);
   });
 });

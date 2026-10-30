@@ -10,7 +10,7 @@ area you are changing, it holds the verified details (routes, models, defects, t
 
 | Path | Repo | What | Docs |
 |---|---|---|---|
-| `backend/` | `dikshantctin/clinicalminds-backend` | FastAPI + PostgreSQL (database-per-tenant), JWT auth, AI routing, crisis detection | `backend/CLAUDE.md` |
+| `backend/` | `dikshantctin/clinicalminds-backend` | FastAPI + PostgreSQL (database-per-tenant), JWT auth, self-booking + per-clinic payments, follow-up queue | `backend/CLAUDE.md` |
 | `frontend/` | `dikshantctin/clinicalminds-frontend` | React 18 / TypeScript / Vite / Tailwind | `frontend/CLAUDE.md` |
 | `deidentification-service/` | `dikshantctin/clinicalminds-deidentification` | HIPAA PHI de-identification microservice (:8002) | `deidentification-service/CLAUDE.md` |
 | `e2e/` | (this repo) | Playwright suite for backend API, frontend UI and de-id service | `e2e/README.md` |
@@ -26,16 +26,16 @@ git -C backend status                           # work inside a submodule like a
 - Submodules check out **detached** at the pinned commit; `git -C <dir> checkout main` before committing.
 - Commit inside the submodule and push it **first**, then `git add <dir>` in the monorepo and commit
   the new pointer. A monorepo commit that points at an unpushed submodule commit is broken for everyone else.
-- All three `main` branches carry the kanban / OTP / onboarding work (merged 2026-10-28).
 
 ## Essential Commands
 
 ### Backend (`backend/`)
 ```bash
-docker compose up -d postgres chromadb        # Postgres 16+pgvector :5432, ChromaDB :8001 (Redis :6379 not in compose)
+docker compose up -d postgres                 # Postgres 16+pgvector :5432 (Redis :6379 not in compose)
 pip install -r requirements.txt && cp .env.example .env
 python main.py                                # :8000  (uvicorn main:app --reload)
 python scripts/setup_demo_data.py             # with the server UP: onboards the demo org — demo@clinicalmind.com / Password123! (ADMIN)
+python scripts/demo_data.py import scripts/fixtures/demo_clinic.json   # real demo rows (patients/sessions/payments), dates re-based onto today
 black . --line-length 100 && ruff check . && mypy app/
 alembic revision --autogenerate -m "description" && alembic upgrade head
 ```
@@ -89,8 +89,7 @@ Onboarding writes users to both layers with the same user id.
 ```
 app/
 ├── api/v1/              # Routers: auth, otp, onboarding, verification, public_booking, patients, sessions,
-│                        #   schedules, crisis, analytics, tenants, catalog, teams, kanban (permissions: unmounted)
-├── core/ai/             # model_router (Claude 3.5 via legacy completions API — needs migration), crisis_detection (sklearn)
+│                        #   schedules, analytics (GET overview only), tenants, catalog, teams, kanban, payments
 ├── core/multi_database_manager.py  # database-per-tenant
 ├── models/              # platform.py (platform DB), database.py (legacy + tenant), kanban/team/appointment/audit models
 ├── schemas/             # Pydantic models (kanban, team, tenant, onboarding, permissions, appointment)
@@ -105,15 +104,17 @@ app/
 src/
 ├── App.tsx              # All routes + RoleGuard role lists
 ├── config/navigation.ts # Sidebar items + roles
-├── pages/               # auth, onboarding (8-step wizard), dashboard, patients, sessions, tasks (kanban), teams, ai, crisis, analytics, settings, portal
-├── components/          # admin, ai, auth (ProtectedRoute, RoleGuard), booking, common, dashboard, debug, layout, notifications
-├── services/api.ts      # Axios client + AuthAPI/PatientAPI/SessionAPI/AIAPI/CrisisAPI/AnalyticsAPI
+├── pages/               # auth, onboarding (8-step wizard), dashboard, patients, sessions, tasks (kanban), teams, settings, portal, booking
+├── components/          # admin, auth (ProtectedRoute, RoleGuard), booking, common, dashboard, debug, layout, notifications, settings
+├── services/api.ts      # Axios client + AuthAPI/PatientAPI/SessionAPI/OverviewAPI/TenantAPI/PublicBookingAPI/PaymentsAPI
 ├── context/             # AuthContext, TenantContext, ThemeContext
 └── hooks/
 ```
 
 ### Key Features
-- **AI**: routing between Claude 3.5 Sonnet and GPT-4o-mini; crisis detection (multi-layer); per-tenant cost tracking.
+- **Dashboard**: four live numbers from `GET /analytics/overview` (sessions this week, no-shows, revenue collected
+  this month, patients needing follow-up). There is no AI assistant, crisis page or analytics page
+  (mock-data facades were removed). Planned AI = a note-drafting scribe behind de-identification.
 - **Self-booking**: public `/book/<firm_code>` page; a booking is a `therapy_session` (`booked_via="web"`),
   so it appears on the clinic's and the therapist's schedules. Patient phone proven via phone.email.
 - **Payments**: each clinic connects its **own** Razorpay account (Settings → Payments; secret encrypted at rest);
@@ -153,12 +154,13 @@ const mutation = useMutation(PatientAPI.updatePatient, {
 
 ## Important Considerations
 
-1. **Healthcare Compliance**: patient data security and DPDP Act 2023. Never log PHI.
+1. **Healthcare Compliance**: patient data security and DPDP Act 2023. Never log PHI, tokens, passwords,
+   invite/reset links or API secrets — backend loggers and frontend `console.*` alike. Never return exception
+   text to clients (`detail=str(e)`): log the exception type server-side, answer with a fixed message.
 2. **Multi-tenant Isolation**: never allow cross-tenant data access; tenant comes from the JWT.
-3. **Crisis Management**: critical path — test thoroughly.
+3. **No invented numbers**: every figure a clinic sees must come from its own rows (see `demo_data.py` for demos).
 4. **Professional UI**: healthcare-grade appearance, WCAG 2.1 AA.
-5. **AI Cost Tracking**: usage drives tenant billing.
-6. **Known defects** are listed per component in each `CLAUDE.md` (e.g. backend `register`/`refresh-token`
+5. **Known defects** are listed per component in each `CLAUDE.md` (e.g. backend `register`/`refresh-token`
    stubs, orphaned frontend jest tests, de-id frontend lacks `package.json`). Check before building on an endpoint.
 
 ## Common Tasks
@@ -177,41 +179,56 @@ const mutation = useMutation(PatientAPI.updatePatient, {
 1. Tenant data → tenant DB models; platform data → `models/platform.py`.
 2. UUID PKs, `created_at`/`updated_at`/`is_active`; Alembic migration; tenant-aware indexes.
 
-<!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
+## Definition of done
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+Each submodule has `make check` (backend: ruff + mypy + pytest; frontend: lint + type-check + build);
+the root `Makefile` runs both (`make check`) and the Playwright suite (`make e2e`). Nothing is "done"
+until you have run `make check` in every submodule you touched **and** the relevant Playwright specs
+(`cd e2e && npx playwright test <spec>`) against a running stack, and read the output. A skipped spec is not a pass.
 
-### When to use graph tools FIRST
+## Tests with every feature
 
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
+Any feature or bugfix that changes user-visible behavior or an API contract ships with a Playwright spec in
+`e2e/api/` or `e2e/web/`, written **first** (it fails, then the change makes it pass):
+- exact asserts: one status (`toBe(403)`), exact body fields — never "200 or 422";
+- at least one negative case (wrong role → 403, no token → 401, bad input → 422, foreign tenant → 403);
+- `data-testid` selectors for anything the UI spec clicks or reads;
+- no `test.skip` that hides a failure — skips are only for an unreachable service; a known, unfixed defect is
+  a `test.fixme(reason)` listed in `e2e/README.md`, removed by the fix.
 
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+## Git workflow
 
-### Key Tools
+- One branch + PR per change; never commit straight to `main`. Small, focused commits.
+- Submodules: commit and push the submodule branch **first**, then commit the new pointer in the monorepo.
+- Several Claude sessions may share one checkout. Do your work in a `git worktree`, check
+  `git branch --show-current` right before committing, and push with an explicit refspec
+  (`git push origin HEAD:<branch>`). A session switching the shared checkout's branch once sent a commit to the wrong branch.
 
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
+## CI/CD
 
-### Workflow
+There is CI only, no deployment pipeline. Three GitHub Actions workflows:
 
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+| Repo | Workflow | Trigger | Runs |
+|---|---|---|---|
+| `backend` | `.github/workflows/ci.yml` | push, PR | Postgres service → `create_all` via `import main` → `make check` (ruff, mypy, pytest) |
+| `frontend` | `.github/workflows/ci.yml` | push, PR | `npm ci` → `make check` (lint, type-check, build) |
+| monorepo | `.github/workflows/e2e.yml` | PR, manual | checkout with submodules → Postgres + Redis → backend on :8000 (`create_all`, `alembic stamp head`) → `setup_demo_data.py` + `demo_data.py import` → Vite on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
+
+Merge order for a change spanning repos: backend PR (green) → frontend PR (green) → monorepo PR that bumps the
+submodule pointers (its e2e runs against exactly those commits). A pointer must name a commit on the submodule's
+`main` after merge (merge with a merge commit, not squash, or the pinned commit is orphaned).
+
+Rules learned the hard way:
+- **CI starts from an empty database.** Tests create every row they need (users included) and clean up after
+  themselves; never read "some existing user" from the dev DB.
+- **Every import must be in `requirements.txt` / `package.json`.** The local venv / `node_modules` hides missing
+  dependencies; CI does not (`aiohttp` was missing).
+- **A new required `Settings` field must be added to both** `backend/.github/workflows/ci.yml` (`env:`) and the
+  `.env` heredoc in `e2e.yml`, or the backend fails to start in CI.
+- **Secret `SUBMODULES_TOKEN`** (monorepo → Settings → Secrets → Actions) lets `e2e.yml` clone the private
+  submodules. Use a **classic** PAT with the `repo` scope; the fine-grained token kept getting 403. Set it with
+  `gh secret set SUBMODULES_TOKEN -R dikshantctin/clinicalminds-monorepo` (value only, no `NAME=` prefix).
+  Checkout 403 on the submodules = token lacks access; `could not read Username` = the secret holds a revoked token.
+- Read failures with `gh run view <id> -R dikshantctin/<repo> --log-failed`; re-run with `gh run rerun <id>`.
+- Known flaky e2e specs (shared demo data, parallel workers): `api/patients.spec.ts` stats-vs-list totals and
+  `api/payments.spec.ts` slot hold. A failure there is re-run once, not "fixed" by loosening asserts.

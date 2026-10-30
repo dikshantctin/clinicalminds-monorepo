@@ -26,9 +26,9 @@ test.describe('public booking page (/book/<firmCode>)', () => {
     await page.goto(`/book/${auth.firmCode}`);
     await expect(page.getByTestId('booking-page')).toBeVisible();
     await page.getByTestId(`service-${service.id}`).click();
-    await page.getByRole('button', { name: /Jane Doe/ }).click();
+    await page.getByRole('radio', { name: /Jane Doe/ }).click();
     await page.getByTestId('booking-date').fill(dayAfterTomorrow());
-    const slotButtons = page.getByTestId('booking-slots').getByRole('button');
+    const slotButtons = page.getByTestId('booking-slots').getByRole('radio');
     await expect(slotButtons.first()).toBeVisible({ timeout: 15_000 });
     await slotButtons.last().click();
 
@@ -53,7 +53,7 @@ test.describe('public booking page (/book/<firmCode>)', () => {
       await expect(clinicPage.getByTestId('booked-online').first()).toBeVisible({ timeout: 15_000 });
     } finally {
       await clinic.close();
-      await api.put(`/api/v1/sessions/${reference}`, { data: { status: 'cancelled', cancellation_reason: 'e2e cleanup' } });
+      await api.post(`/api/v1/sessions/${reference}/cancel`, { data: { reason: 'e2e cleanup' } });
     }
   });
 

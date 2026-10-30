@@ -31,3 +31,9 @@ export const RAZORPAY = {
   keyId: process.env.E2E_RAZORPAY_KEY_ID ?? '',
   keySecret: process.env.E2E_RAZORPAY_KEY_SECRET ?? '',
 };
+
+/** Demo team members seeded by backend/scripts/setup_demo_data.py (allow-listed for verification). */
+export const DEMO_THERAPIST = { email: 'therapist.jane@democlinic.com', password: 'Password123!' };
+export const DEMO_PSYCHOLOGIST = { email: 'dr.smith@democlinic.com', password: 'Password123!' };
+/** A portal PATIENT login in the demo clinic, seeded by backend/scripts/setup_demo_data.py. */
+export const DEMO_PATIENT = { email: 'patient.demo@democlinic.com', password: 'Password123!' };
