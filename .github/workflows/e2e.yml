@@ -101,13 +101,14 @@ jobs:
           python scripts/setup_demo_data.py
           python scripts/demo_data.py import scripts/fixtures/demo_clinic.json
 
-      - name: Start frontend
+      - name: Start frontend (production bundle, as shipped)
         working-directory: frontend
         env:
           VITE_API_URL: http://localhost:8000
         run: |
           npm ci
-          nohup npm run dev > /tmp/frontend.log 2>&1 &
+          npx vite build  # no tsc: frontend CI already type-checks
+          nohup npx vite preview > /tmp/frontend.log 2>&1 &
           for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:3000 && exit 0; sleep 2; done
           cat /tmp/frontend.log; exit 1
 
