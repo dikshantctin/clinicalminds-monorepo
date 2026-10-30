@@ -94,6 +94,34 @@ test.describe('/api/v1/patients', () => {
     }
   });
 
+  test('GET /patients/{id}/assessments lists the patient\'s stored assessments, never a made-up score', async ({ api }) => {
+    const created = await api.post('/api/v1/patients/', { data: { first_name: uniq('Assess'), last_name: 'Patient' } });
+    expect(created.status(), await created.text()).toBe(200);
+    const patient = await created.json();
+    try {
+      const res = await api.get(`/api/v1/patients/${patient.id}/assessments`);
+      expect(res.status(), await res.text()).toBe(200);
+      expect(await res.json()).toEqual([]); // a new patient has none (it used to return a fixed PHQ-9 of 12)
+
+      const login = await api.post('/api/v1/auth/login', { data: DEMO_THERAPIST });
+      const therapist = await pwRequest.newContext({
+        baseURL: env.API_URL,
+        extraHTTPHeaders: { Authorization: `Bearer ${(await login.json()).access_token}` },
+      });
+      try {
+        expect((await therapist.get(`/api/v1/patients/${patient.id}/assessments`)).status()).toBe(403); // not assigned
+      } finally {
+        await therapist.dispose();
+      }
+    } finally {
+      await api.delete(`/api/v1/patients/${patient.id}`);
+    }
+  });
+
+  test('GET /patients/{id}/assessments for an unknown patient → 404', async ({ api }) => {
+    expect((await api.get(`/api/v1/patients/${RANDOM_UUID}/assessments`)).status()).toBe(404);
+  });
+
   test('GET /patients/stats needs a token (401)', async ({ anon }) => {
     expect((await anon.get('/api/v1/patients/stats')).status()).toBe(401);
   });

@@ -66,7 +66,7 @@ jobs:
           cat > .env <<EOF
           DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/clinical_mind_db
           REDIS_URL=redis://localhost:6379/0  # required setting; nothing connects to it
-          ENVIRONMENT=development
+          ENVIRONMENT=test  # not development: no default-tenant fallback, so requests must carry their tenant as in production
           DEBUG=false
           SECRET_KEY=$(openssl rand -hex 32)
           JWT_SECRET_KEY=$(openssl rand -hex 32)
