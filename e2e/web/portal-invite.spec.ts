@@ -6,7 +6,7 @@ import { LoginPage } from '../src/pages/login.page';
 /**
  * The whole patient invite journey in the browser: the clinic invites, the patient follows the link from the
  * email, sets a password on /portal/set-password, then signs in on /portal/login. The email link proves the
- * email, so the next stop is the phone check on /auth/verify (the phone.email widget cannot be driven headlessly).
+ * email, and a patient is not asked for a phone, so the patient lands straight on the portal.
  * This is the path a real patient takes; the API spec (api/patient-portal.spec.ts) covers the edge cases.
  */
 const PASSWORD = 'Password123!';
@@ -15,7 +15,7 @@ test.describe('patient portal invite (browser)', () => {
   requireWeb();
   requireAuth();
 
-  test('invite email link → set password → portal login as PATIENT → phone check', async ({ api, browser }) => {
+  test('invite email link → set password → portal login as PATIENT → portal (no phone check)', async ({ api, browser }) => {
     const created = await api.post('/api/v1/patients/', { data: { first_name: uniq('Invitee'), last_name: 'Patient' } });
     expect(created.status(), await created.text()).toBe(200);
     const patientId: string = (await created.json()).id;
@@ -44,8 +44,8 @@ test.describe('patient portal invite (browser)', () => {
       await login.email.fill(email);
       await login.password.fill(PASSWORD);
       await login.submit.click();
-      // signed in as the patient; the verification gate still asks for the phone (set-password no longer skips it)
-      await expect(page).toHaveURL(/\/auth\/verify$/);
+      // signed in as the patient: email proven by the link, phone never asked for, so no /auth/verify detour
+      await expect(page).toHaveURL(/\/portal$/);
       const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('auth_user') || '{}'));
       expect(stored.email).toBe(email);
       expect(stored.role).toBe('PATIENT');
