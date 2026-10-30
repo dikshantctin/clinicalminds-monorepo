@@ -2,7 +2,11 @@ name: e2e
 
 on:
   pull_request:
+    paths-ignore: ['**.md']
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: e2e-${{ github.ref }}
@@ -24,9 +28,6 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres -d clinical_mind_db"
           --health-interval 5s --health-timeout 5s --health-retries 20
-      redis:
-        image: redis:7-alpine
-        ports: ['6379:6379']
 
     env:
       API_URL: http://localhost:8000
@@ -50,20 +51,24 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
 
       - name: Backend .env (throwaway secrets generated per run)
         working-directory: backend
         run: |
           cat > .env <<EOF
           DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/clinical_mind_db
-          REDIS_URL=redis://localhost:6379/0
+          REDIS_URL=redis://localhost:6379/0  # required setting; nothing connects to it
           ENVIRONMENT=development
           DEBUG=false
           SECRET_KEY=$(openssl rand -hex 32)
           JWT_SECRET_KEY=$(openssl rand -hex 32)
           ALLOWED_HOSTS=localhost,127.0.0.1
-          ALLOWED_ORIGINS=http://localhost:3000
+          PLATFORM_ORIGIN=http://localhost:3000
           PORTAL_BASE_URL=http://localhost:3000
           PAYMENTS_ENABLED=false
           ANTHROPIC_API_KEY=unused-in-ci
@@ -102,11 +107,22 @@ jobs:
           for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:3000 && exit 0; sleep 2; done
           cat /tmp/frontend.log; exit 1
 
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+
       - name: Install Playwright
         working-directory: e2e
         run: |
-          npm install
-          npx playwright install --with-deps chromium
+          npm ci
+          if [ '${{ steps.pw-cache.outputs.cache-hit }}' = 'true' ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
 
       - name: Playwright (api + web)
         working-directory: e2e
