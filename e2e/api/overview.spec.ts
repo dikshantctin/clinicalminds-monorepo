@@ -129,11 +129,11 @@ test.describe('/api/v1/analytics/overview', () => {
 
   test('a clinician sees only their own week, and no revenue', async ({ anon, api }) => {
     const login = await anon.post('/api/v1/auth/login', { data: { email: 'dr.smith@democlinic.com', password: 'Password123!' } });
-    test.skip(login.status() !== 200, `demo psychologist cannot log in (${login.status()}) — seed with scripts/setup_demo_data.py`);
+    expect(login.status(), `demo psychologist login (seeded by backend/scripts/setup_demo_data.py): ${await login.text()}`).toBe(200);
     const body = await login.json();
     const headers = { Authorization: `Bearer ${body.access_token}`, 'X-Tenant-ID': body.tenant.id };
     const res = await anon.get('/api/v1/analytics/overview', { headers });
-    test.skip(res.status() === 403, 'demo psychologist is blocked by the verification gate (not on VERIFICATION_TEST_EMAILS)');
+    // a 403 here means the verification gate blocks the demo psychologist (add it to VERIFICATION_TEST_EMAILS)
     expect(res.status(), await res.text()).toBe(200);
     const mine = await res.json();
     expect(mine.scope).toBe('mine');
