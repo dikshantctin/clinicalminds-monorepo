@@ -1,0 +1,61 @@
+name: dependency audit
+
+# Known-vulnerability scan of the pinned dependencies. Weekly, not a PR gate: main still carries known
+# vulnerabilities, so a gate would fail every PR. A red run is the to-do list; the report is in the run summary.
+on:
+  schedule:
+    - cron: '0 21 * * 0' # Monday 02:30 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULES_TOKEN }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: pip-audit backend (requirements-dev.txt includes requirements.txt)
+        run: |
+          pip install -q pip-audit
+          rc=0
+          pip-audit -r backend/requirements-dev.txt --progress-spinner off -f markdown -o report.md || rc=$?
+          { echo '## backend'; cat report.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+
+  npm-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [frontend, e2e]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULES_TOKEN }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # reads package-lock.json only; no install needed
+      - name: npm audit ${{ matrix.dir }}
+        working-directory: ${{ matrix.dir }}
+        run: |
+          rc=0
+          npm audit --audit-level=high > report.txt || rc=$?
+          { echo '## ${{ matrix.dir }}'; echo '```'; cat report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
