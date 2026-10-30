@@ -1,6 +1,6 @@
 import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { env, uniq, RANDOM_UUID } from '../src/env';
+import { env, uniq, RANDOM_UUID, DEMO_THERAPIST } from '../src/env';
 
 test.describe('/api/v1/patients', () => {
   requireApi();
