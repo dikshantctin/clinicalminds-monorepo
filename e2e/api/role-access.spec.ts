@@ -253,6 +253,51 @@ test.describe('role access: clinicians see only patients assigned to them', () =
       await api.delete(`/api/v1/patients/${patient.id}`);
     }
   });
+
+  test('a patient a clinician creates is assigned to them, so they can open it and book it', async ({ api }) => {
+    const therapist = await loginAs(DEMO_THERAPIST);
+    let patientId = '';
+    try {
+      const created = await therapist.ctx.post('/api/v1/patients/', { data: { first_name: uniq('OwnNew'), last_name: 'Patient' } });
+      expect(created.status(), await created.text()).toBe(200);
+      const patient = await created.json();
+      patientId = patient.id;
+      expect(patient.assigned_therapist_id).toBe(therapist.userId);
+      expect((await therapist.ctx.get(`/api/v1/patients/${patient.id}`)).status()).toBe(200);
+      const at = new Date(Date.now() + 5 * 86_400_000).toISOString();
+      const booked = await therapist.ctx.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: at, duration_minutes: 50 } });
+      expect(booked.status(), await booked.text()).toBe(200);
+      await api.post(`/api/v1/sessions/${(await booked.json()).id}/cancel`, { data: { reason: 'e2e cleanup' } });
+    } finally {
+      await therapist.ctx.dispose();
+      if (patientId) await api.delete(`/api/v1/patients/${patientId}`);
+    }
+  });
+
+  test("a clinician cannot book a session for a patient who is not theirs (403); a PATIENT token cannot book (403); the admin can (200)", async ({ api }) => {
+    const created = await api.post('/api/v1/patients/', { data: { first_name: uniq('NotMine'), last_name: 'Patient' } });
+    expect(created.status(), await created.text()).toBe(200);
+    const patient = await created.json();
+    const therapist = await loginAs(DEMO_THERAPIST);
+    const portal = await loginAs(DEMO_PATIENT);
+    const data = { patient_id: patient.id, scheduled_at: new Date(Date.now() + 5 * 86_400_000).toISOString(), duration_minutes: 50 };
+    try {
+      const byTherapist = await therapist.ctx.post('/api/v1/sessions/', { data });
+      expect(byTherapist.status(), await byTherapist.text()).toBe(403);
+      const byPatient = await portal.ctx.post('/api/v1/sessions/', { data });
+      expect(byPatient.status(), await byPatient.text()).toBe(403);
+      const listed = (await (await api.get(`/api/v1/patients/${patient.id}/sessions`)).json()) as unknown[] | { sessions: unknown[] };
+      expect(Array.isArray(listed) ? listed : listed.sessions).toEqual([]);
+
+      const byAdmin = await api.post('/api/v1/sessions/', { data });
+      expect(byAdmin.status(), await byAdmin.text()).toBe(200);
+      await api.post(`/api/v1/sessions/${(await byAdmin.json()).id}/cancel`, { data: { reason: 'e2e cleanup' } });
+    } finally {
+      await therapist.ctx.dispose();
+      await portal.ctx.dispose();
+      await api.delete(`/api/v1/patients/${patient.id}`);
+    }
+  });
 });
 
 test.describe('role access: staff see every board, but change only what is theirs', () => {
