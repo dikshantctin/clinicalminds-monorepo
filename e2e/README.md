@@ -76,7 +76,8 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        patient.demo@democlinic.com login), patient-portal (invite → set password → portal
                        login; the login audience picks staff vs PATIENT; an invite never overwrites a password),
                        patients, sessions (offsets, paging, filters, edit),
-                       schedules (daily schedule in the clinic time zone),
+                       schedules (daily schedule in the clinic time zone), clinic-timezone (a New York clinic: slots,
+                       booking, overview week/month, schedule stats + availability in its zone; Kolkata unchanged),
                        kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
