@@ -218,6 +218,39 @@ test.describe('public booking paid into the clinic\'s Razorpay account', () => {
     }
   });
 
+  test('a replay of an EARLIER refund is not applied again (not only the last one)', async ({ anon, api, auth }) => {
+    const { ready } = await gateway(api);
+    test.skip(!ready, NO_GATEWAY);
+    const cfg = await (await api.get('/api/v1/payments/config')).json();
+    const WEBHOOK_SECRET = 'e2e-webhook-secret-0001'; // the same secret the webhook spec stores
+    const saved = await api.put('/api/v1/payments/config', { data: { key_id: cfg.key_id, enabled: true, webhook_secret: WEBHOOK_SECRET } });
+    expect(saved.status(), await saved.text()).toBe(200);
+    const svc = await service(api, 1);
+    const { conf } = await bookASlot(anon, auth.firmCode, svc.id);
+    const url = `/api/v1/public/booking/${auth.firmCode}/payments/webhook`;
+    const post = (body: string) =>
+      anon.post(url, { data: body, headers: { 'content-type': 'application/json', 'x-razorpay-signature': createHmac('sha256', WEBHOOK_SECRET).update(body).digest('hex') } });
+    const paymentId = uniq('pay_e2e_rf');
+    try {
+      const captured = JSON.stringify({ event: 'payment.captured', payload: { payment: { entity: { id: paymentId, order_id: conf.payment.order_id, amount: 100 } } } });
+      expect(await (await post(captured)).json()).toEqual({ status: 'paid', changed: true });
+      const refund = (id: string, amount: number) =>
+        JSON.stringify({ event: 'refund.processed', payload: { refund: { entity: { id, payment_id: paymentId, amount } } } });
+      const r1 = refund(uniq('rfnd_e2e_a'), 30);
+      const r2 = refund(uniq('rfnd_e2e_b'), 30);
+      expect(await (await post(r1)).json()).toEqual({ status: 'paid', refunded_paise: 30, changed: true });
+      expect(await (await post(r2)).json()).toEqual({ status: 'paid', refunded_paise: 60, changed: true });
+      // Razorpay redelivers the FIRST refund after the second one
+      const replay = await post(r1);
+      expect(replay.status()).toBe(200);
+      expect(await replay.json()).toEqual({ status: 'paid', refunded_paise: 60, changed: false });
+      const rows = await (await api.get(`/api/v1/sessions/${conf.session_id}/payments`)).json();
+      expect(rows[0]).toEqual(expect.objectContaining({ status: 'paid', refunded_paise: 60 }));
+    } finally {
+      await api.post(`/api/v1/sessions/${conf.session_id}/cancel`, { data: { reason: 'e2e cleanup' } });
+    }
+  });
+
   // NB: the "clinic disabled its gateway → priced bookings are not charged" path is NOT tested here.
   // It would have to flip the demo clinic's single shared gateway off/on, which races every other
   // booking under fullyParallel. The server rule is small — `_gateway` returns None when is_enabled is
