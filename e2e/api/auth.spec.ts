@@ -110,8 +110,8 @@ test.describe('stubbed auth flows (documented, not yet implemented)', () => {
     expect(res.status()).toBe(400);
   });
 
-  test('POST /auth/set-password rejects a bad invite token with 400', async ({ anon }) => {
-    const res = await anon.post('/api/v1/auth/set-password', { data: { token: 'bogus', password: 'password123' } });
-    expect(res.status()).toBe(400);
+  test('POST /auth/set-password is gone (portal invites use /patients/set-password, which returns no token)', async ({ api }) => {
+    const res = await api.post('/api/v1/auth/set-password', { data: { token: 'bogus', password: 'password123' } });
+    expect(res.status()).toBe(404);
   });
 });
