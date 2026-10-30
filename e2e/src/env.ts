@@ -35,5 +35,9 @@ export const RAZORPAY = {
 /** Demo team members seeded by backend/scripts/setup_demo_data.py (allow-listed for verification). */
 export const DEMO_THERAPIST = { email: 'therapist.jane@democlinic.com', password: 'Password123!' };
 export const DEMO_PSYCHOLOGIST = { email: 'dr.smith@democlinic.com', password: 'Password123!' };
+/** Dev/test email outbox: the backend writes each email here as JSON instead of sending it when its
+ *  EMAIL_OUTBOX_DIR is set (backend/.env; refused in production). Path as seen from e2e/. */
+export const EMAIL_OUTBOX = process.env.E2E_EMAIL_OUTBOX ?? '../backend/.email-outbox';
+
 /** A portal PATIENT login in the demo clinic, seeded by backend/scripts/setup_demo_data.py. */
 export const DEMO_PATIENT = { email: 'patient.demo@democlinic.com', password: 'Password123!' };
