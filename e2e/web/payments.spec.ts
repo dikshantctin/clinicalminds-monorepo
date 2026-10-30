@@ -81,9 +81,11 @@ test.describe('public booking pays the clinic', () => {
     const slotButtons = page.getByTestId('booking-slots').getByRole('radio');
     await expect(slotButtons.first()).toBeVisible({ timeout: 15_000 });
     await slotButtons.last().click();
+    await page.getByTestId('booking-phone').fill(TEST_PHONE);
+    await page.getByTestId('booking-phone').blur();
+    await page.getByTestId('booking-for-new').click(); // the shared test phone already has patients
     await page.getByTestId('booking-first-name').fill(uniq('Pay'));
     await page.getByTestId('booking-last-name').fill('Online');
-    await page.getByTestId('booking-phone').fill(TEST_PHONE);
     await page.getByTestId('booking-submit').click();
 
     await expect(page.getByTestId('booking-payment')).toBeVisible({ timeout: 15_000 });

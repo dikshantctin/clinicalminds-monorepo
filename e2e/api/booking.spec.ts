@@ -58,6 +58,7 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
       practitioner_id: practitioner.id,
       scheduled_at: slot,
       patient: { first_name: uniq('Book'), last_name: 'Patient', phone: TEST_PHONE, email: 'booking@example.com' },
+      new_patient: true, // the shared test phone already has patients: book as someone new
       notes: 'e2e booking',
     };
     const booked = await anon.post(`/api/v1/public/booking/${auth.firmCode}`, { data: body });
