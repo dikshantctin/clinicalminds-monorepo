@@ -9,7 +9,9 @@ import { env, uniq, RANDOM_UUID, DEMO_PATIENT } from '../src/env';
 
 async function loginAs(creds: { email: string; password: string }): Promise<APIRequestContext> {
   const anon = await pwRequest.newContext({ baseURL: env.API_URL });
-  const res = await anon.post('/api/v1/auth/login', { data: creds });
+  // a patient logs in through the portal (audience "patient"); staff /auth/login answers it with 403
+  const audience = creds === DEMO_PATIENT ? 'patient' : 'staff';
+  const res = await anon.post('/api/v1/auth/login', { data: { ...creds, audience } });
   const text = await res.text();
   await anon.dispose();
   expect(res.status(), `login as ${creds.email}: ${text}`).toBe(200);
