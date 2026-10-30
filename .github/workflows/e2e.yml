@@ -74,7 +74,8 @@ jobs:
           ALLOWED_HOSTS=localhost,127.0.0.1
           PLATFORM_ORIGIN=http://localhost:3000
           PORTAL_BASE_URL=http://localhost:3000
-          PAYMENTS_ENABLED=false
+          PAYMENTS_ENABLED=true
+          PAYMENTS_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr "+/" "-_")  # Fernet key: url-safe base64 of 32 bytes
           ANTHROPIC_API_KEY=unused-in-ci
           OPENAI_API_KEY=unused-in-ci
           EMAIL_OUTBOX_DIR=.email-outbox
