@@ -41,6 +41,12 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres -d clinical_mind_db"
           --health-interval 5s --health-timeout 5s --health-retries 20
+      redis: # rate-limit counters
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
 
     env:
       API_URL: http://localhost:8000
@@ -95,7 +101,7 @@ jobs:
         run: |
           cat > .env <<EOF
           DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/clinical_mind_db
-          REDIS_URL=redis://localhost:6379/0  # required setting; nothing connects to it
+          REDIS_URL=redis://localhost:6379/0
           ENVIRONMENT=test  # not development: no default-tenant fallback, so requests must carry their tenant as in production
           DEBUG=false
           SECRET_KEY=$(openssl rand -hex 32)
@@ -108,6 +114,7 @@ jobs:
           ANTHROPIC_API_KEY=unused-in-ci
           OPENAI_API_KEY=unused-in-ci
           EMAIL_OUTBOX_DIR=.email-outbox
+          RATE_LIMIT_IP_SCALE=100  # every spec shares one IP; per-account limits stay at production values
           EOF
 
       # the whole venv, not just pip's download cache: a hit skips the install entirely
