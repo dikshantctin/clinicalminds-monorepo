@@ -3,9 +3,9 @@ import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_THERAPIST, DEMO_PSYCHOLOGIST, DEMO_PATIENT } from '../src/env';
 
 /**
- * Which clinicians offer which service. A new service starts with every clinician the clinic has; the
- * admin narrows it. Public booking offers a clinician only for the services they are linked to, and
- * a service only while someone offers it.
+ * Which clinicians offer which service. Only an admin assigns them: a new service starts with nobody and
+ * is not on the booking page until assigned. Public booking offers a clinician only for the services
+ * they are linked to, and a service only while someone offers it.
  */
 
 const TEST_PHONE = '+919876543210'; // VERIFICATION_TEST_PHONES: no phone.email round-trip
@@ -41,14 +41,16 @@ test.describe('service ↔ clinician links', () => {
   requireApi();
   requireAuth();
 
-  test('a new service is offered by the clinic\'s clinicians; narrowing it changes public booking', async ({ api, anon, auth }) => {
+  test('a new service starts with nobody; assigning clinicians drives public booking', async ({ api, anon, auth }) => {
     const therapist = await login(DEMO_THERAPIST);
     const psychologist = await login(DEMO_PSYCHOLOGIST);
     const serviceId = await createService(api);
     try {
       const initial = await api.get(`/api/v1/catalog/services/${serviceId}/clinicians`);
       expect(initial.status(), await initial.text()).toBe(200);
-      expect((await initial.json()).clinician_ids).toEqual(expect.arrayContaining([therapist.id, psychologist.id]));
+      expect(await initial.json()).toEqual({ service_id: serviceId, clinician_ids: [] });
+      const unassigned = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
+      expect(unassigned.services.map((s: { id: string }) => s.id)).not.toContain(serviceId);
 
       const put = await api.put(`/api/v1/catalog/services/${serviceId}/clinicians`, { data: { clinician_ids: [therapist.id] } });
       expect(put.status(), await put.text()).toBe(200);

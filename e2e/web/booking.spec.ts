@@ -1,5 +1,6 @@
 import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { assignDemoClinicians, demoClinicianIds } from '../src/catalog';
 
 const TEST_PHONE = '+919876543210'; // test-listed: no phone.email round-trip needed
 
@@ -22,11 +23,8 @@ test.describe('public booking page (/book/<firmCode>)', () => {
     expect(svc.status(), await svc.text()).toBe(201);
     const service = await svc.json();
     try {
-      const info = await (await api.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
-      const jane = info.practitioners.find((p: { name: string }) => p.name === 'Jane Doe');
-      const smith = info.practitioners.find((p: { name: string }) => p.name === 'John Smith');
-      expect(jane && smith, 'both demo clinicians are bookable').toBeTruthy();
-      const put = await api.put(`/api/v1/catalog/services/${service.id}/clinicians`, { data: { clinician_ids: [jane.id] } });
+      const [janeId] = await demoClinicianIds(); // [therapist Jane, psychologist Smith]
+      const put = await api.put(`/api/v1/catalog/services/${service.id}/clinicians`, { data: { clinician_ids: [janeId] } });
       expect(put.status(), await put.text()).toBe(200);
 
       await page.goto(`/book/${auth.firmCode}`);
@@ -45,6 +43,7 @@ test.describe('public booking page (/book/<firmCode>)', () => {
     });
     expect(svc.status(), await svc.text()).toBe(201);
     const service = await svc.json();
+    await assignDemoClinicians(api, service.id);
 
     await page.goto(`/book/${auth.firmCode}`);
     await expect(page.getByTestId('booking-page')).toBeVisible();

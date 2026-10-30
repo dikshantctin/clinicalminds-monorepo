@@ -1,5 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { assignDemoClinicians } from '../src/catalog';
 
 /** On VERIFICATION_TEST_PHONES → the backend skips the phone.email round-trip for this number. */
 const TEST_PHONE = '+919876543210';
@@ -16,7 +17,9 @@ async function ensureService(api: any) {
     data: { name: uniq('Therapy'), description: 'e2e', duration_minutes: 50, price: 1500, currency: 'INR' },
   });
   expect(res.status(), await res.text()).toBe(201);
-  return res.json();
+  const service = await res.json();
+  await assignDemoClinicians(api, service.id); // booking offers a service only with assigned clinicians
+  return service;
 }
 
 test.describe('public self-booking (/api/v1/public/booking)', () => {
