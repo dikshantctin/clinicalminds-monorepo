@@ -23,6 +23,19 @@ test.describe('POST /api/v1/auth/login', () => {
     expect((await res.json()).message).toBe('Invalid email or password');
   });
 
+  test('matches the email regardless of case', async ({ anon }) => {
+    requireAuth();
+    const mixed = env.EMAIL.replace(/^./, (c) => c.toUpperCase()).replace(/@.*/, (d) => d.toUpperCase());
+    expect(mixed).not.toBe(env.EMAIL);
+    const res = await anon.post('/api/v1/auth/login', { data: { email: mixed, password: env.PASSWORD } });
+    expect(res.status(), await res.text()).toBe(200);
+    expect((await res.json()).user.email).toBe(env.EMAIL.toLowerCase());
+
+    const wrong = await anon.post('/api/v1/auth/login', { data: { email: mixed, password: 'definitely-wrong' } });
+    expect(wrong.status()).toBe(401);
+    expect((await wrong.json()).message).toBe('Invalid email or password');
+  });
+
   test('rejects an unknown email with 401 (no enumeration)', async ({ anon }) => {
     const res = await anon.post('/api/v1/auth/login', { data: { email: `${uniq('nobody')}@example.com`, password: 'whatever123' } });
     expect(res.status()).toBe(401);
