@@ -75,7 +75,8 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        role-access (table: route × role → exact 401/403/200; PATIENT needs a seeded
                        patient.demo@democlinic.com login), patient-portal (invite → set password → portal
                        login; the login audience picks staff vs PATIENT; an invite never overwrites a password),
-                       patients, sessions,
+                       patients, sessions (offsets, paging, filters, edit),
+                       schedules (daily schedule in the clinic time zone),
                        kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
