@@ -68,7 +68,7 @@ jobs:
           SECRET_KEY=$(openssl rand -hex 32)
           JWT_SECRET_KEY=$(openssl rand -hex 32)
           ALLOWED_HOSTS=localhost,127.0.0.1
-          ALLOWED_ORIGINS=http://localhost:3000
+          PLATFORM_ORIGIN=http://localhost:3000
           PORTAL_BASE_URL=http://localhost:3000
           PAYMENTS_ENABLED=false
           ANTHROPIC_API_KEY=unused-in-ci
