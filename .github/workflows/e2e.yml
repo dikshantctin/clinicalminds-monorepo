@@ -3,6 +3,10 @@ name: e2e
 on:
   pull_request:
     paths-ignore: ['**.md']
+  # main runs check every merge and save the caches PR runs can restore (a PR can't read another PR's caches)
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
   workflow_dispatch:
 
 permissions:
@@ -10,7 +14,7 @@ permissions:
 
 concurrency:
   group: e2e-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   playwright:
