@@ -1,5 +1,5 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { env, uniq, DEMO_PSYCHOLOGIST } from '../src/env';
+import { env, uniq, DEMO_PSYCHOLOGIST, DEMO_THERAPIST } from '../src/env';
 
 test.describe('POST /api/v1/auth/login', () => {
   requireApi();
@@ -113,5 +113,40 @@ test.describe('stubbed auth flows (documented, not yet implemented)', () => {
   test('POST /auth/set-password rejects a bad invite token with 400', async ({ anon }) => {
     const res = await anon.post('/api/v1/auth/set-password', { data: { token: 'bogus', password: 'password123' } });
     expect(res.status()).toBe(400);
+  });
+});
+
+test.describe('login response carries the role permissions (no reload needed)', () => {
+  requireApi();
+  requireAuth();
+
+  // Log in, then read /auth/me with the same token. The login user object must already carry the
+  // fields /auth/me returns, so the UI (Quick Actions) is not empty until the first reload.
+  async function loginAndMe(anon: any, creds: { email: string; password: string }) {
+    const login = await anon.post('/api/v1/auth/login', { data: creds });
+    expect(login.status(), await login.text()).toBe(200);
+    const body = await login.json();
+    const meRes = await anon.get('/api/v1/auth/me', {
+      headers: { Authorization: `Bearer ${body.access_token}`, 'X-Tenant-ID': body.tenant.id },
+    });
+    expect(meRes.status(), await meRes.text()).toBe(200);
+    return { user: body.user, me: await meRes.json() };
+  }
+
+  test('the admin login user carries the same permissions /auth/me returns', async ({ anon }) => {
+    const { user, me } = await loginAndMe(anon, { email: env.EMAIL, password: env.PASSWORD });
+    expect(Array.isArray(user.permissions)).toBe(true);
+    expect(user.permissions.length).toBeGreaterThan(0);
+    expect(user.tenant_id).toBeTruthy();
+    expect(user.firm_code).toBe(me.firm_code);
+    expect([...user.permissions].sort()).toEqual([...me.permissions].sort());
+  });
+
+  test('permissions are role-derived: a therapist gets fewer than an admin, matching its own /auth/me', async ({ anon }) => {
+    const admin = await loginAndMe(anon, { email: env.EMAIL, password: env.PASSWORD });
+    const therapist = await loginAndMe(anon, DEMO_THERAPIST);
+    expect(therapist.user.permissions.length).toBeGreaterThan(0);
+    expect([...therapist.user.permissions].sort()).toEqual([...therapist.me.permissions].sort());
+    expect(admin.user.permissions.length).toBeGreaterThan(therapist.user.permissions.length);
   });
 });
