@@ -33,6 +33,29 @@ test.describe('sessions UI', () => {
     }
   });
 
+  test('End Session on an in-progress row completes it; completing again is refused', async ({ page, api }) => {
+    const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('EndUI'), last_name: 'Patient' } })).json();
+    try {
+      const session = await (
+        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 3_600_000).toISOString() } })
+      ).json();
+      expect((await api.post(`/api/v1/sessions/${session.id}/start`)).status()).toBe(200);
+      await page.goto('/dashboard/sessions');
+      await page.getByRole('searchbox', { name: 'Search sessions' }).fill(patient.first_name);
+      const row = page.locator('tr', { hasText: patient.first_name });
+      await expect(row.getByTestId('session-end')).toBeVisible();
+      await row.getByTestId('session-end').click();
+      await expect(page.getByText('Session ended')).toBeVisible();
+      await expect.poll(async () => (await (await api.get(`/api/v1/sessions/${session.id}`)).json()).status, { timeout: 15_000 }).toBe('completed');
+      await expect(row.getByTestId('session-end')).toHaveCount(0);
+
+      const again = await api.post(`/api/v1/sessions/${session.id}/complete`);
+      expect(again.status()).toBe(409);
+    } finally {
+      await api.delete(`/api/v1/patients/${patient.id}`);
+    }
+  });
+
   test('mark a session no-show from the list, then record a cash payment on it', async ({ page, api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('NoShowUI'), last_name: 'Patient' } })).json();
     try {
