@@ -29,8 +29,11 @@ test.describe('catalog services', () => {
     ['blank name', { name: '   ' }],
     ['zero duration', { duration_minutes: 0 }],
     ['negative duration', { duration_minutes: -30 }],
+    ['duration under 15 minutes', { duration_minutes: 14 }],
+    ['duration over 8 hours', { duration_minutes: 481 }],
     ['negative price', { price: -1 }],
     ['price with more than 2 decimals', { price: 10.555 }],
+    ['lower-case currency', { currency: 'inr' }],
   ];
   for (const [label, patch] of invalid) {
     test(`POST with ${label} → 422`, async ({ api }) => {
