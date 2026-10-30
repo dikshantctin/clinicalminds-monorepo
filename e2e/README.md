@@ -72,7 +72,8 @@ src/fixtures.ts        test/expect + fixtures: api (authed), anon, auth; require
 src/pages/             page objects (login, dashboard nav + headings, add-patient form)
 api/                   health, auth, security (guards, tenant isolation, permissions),
                        role-access (table: route × role → exact 401/403/200; PATIENT needs a seeded
-                       patient.demo@democlinic.com login), patients, sessions,
+                       patient.demo@democlinic.com login), patients, sessions (offsets, paging, filters, edit),
+                       schedules (daily schedule in the clinic time zone),
                        kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
