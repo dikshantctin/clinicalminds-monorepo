@@ -1,6 +1,7 @@
 import { createHmac } from 'crypto';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
+import { assignDemoClinicians } from '../src/catalog';
 
 /**
  * Per-clinic payments: each clinic connects its OWN Razorpay account (Settings → Payments); patients who
@@ -35,7 +36,9 @@ async function service(api: any, price: number) {
     data: { name: uniq(price ? 'Paid consult' : 'Free intro'), description: 'e2e', duration_minutes: 50, price, currency: 'INR' },
   });
   expect(res.status(), await res.text()).toBe(201);
-  return res.json();
+  const created = await res.json();
+  await assignDemoClinicians(api, created.id);
+  return created;
 }
 
 // Walk the day's free slots from the end, retrying on 409 (another parallel spec may grab the same one).

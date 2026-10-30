@@ -1,5 +1,6 @@
 import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
+import { assignDemoClinicians } from '../src/catalog';
 
 /**
  * Per-clinic payments in the browser. The booking flow uses whatever Razorpay account the DEMO CLINIC
@@ -73,6 +74,7 @@ test.describe('public booking pays the clinic', () => {
     });
     expect(svc.status(), await svc.text()).toBe(201);
     const service = await svc.json();
+    await assignDemoClinicians(api, service.id);
 
     await page.goto(`/book/${auth.firmCode}`);
     await page.getByTestId(`service-${service.id}`).click();
