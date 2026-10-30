@@ -5,7 +5,8 @@ import { env, uniq, DEMO_THERAPIST, DEMO_PSYCHOLOGIST, DEMO_PATIENT } from '../s
 /**
  * GET /sessions/{id}/payments shows amounts, so it follows the dashboard's money rule
  * (ADMIN / CLINICAL_DIRECTOR see every session's payments) and the session scope rule
- * (a clinician sees the payments of their OWN sessions only). Patients never see it.
+ * (a clinician sees the payments of their OWN sessions only). SUPPORT_STAFF take payments at the desk,
+ * so they read every session's too. Patients never see it.
  */
 
 type Session = { ctx: APIRequestContext; userId: string };
@@ -76,6 +77,47 @@ test.describe('/api/v1/sessions/{id}/payments — who may see the money', () => 
       await psychologist.ctx.dispose();
       await patientUser.ctx.dispose();
       await api.delete(`/api/v1/patients/${patient.id}`);
+    }
+  });
+  test('support staff (the desk) see any session\'s payments', async ({ anon }) => {
+    // The demo clinic has no SUPPORT_STAFF login, so onboard a private clinic with one.
+    const slug = uniq('desk').toLowerCase();
+    const phone = '+919876543211'; // VERIFICATION_TEST_PHONES: onboarding skips phone.email, logins count as verified
+    const onboarded = await anon.post('/api/v1/onboarding/complete', {
+      data: {
+        organization: {
+          name: `Desk ${slug}`, type: 'clinic', contact_email: `${slug}@example.com`, contact_phone: phone,
+          address_line1: '1 Road', city: 'Pune', state: 'MH', postal_code: '411001',
+        },
+        plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
+        admin: { email: `admin.${slug}@example.com`, password: 'Password123!', first_name: 'Desk', last_name: 'Admin', phone },
+        admin_role: 'ADMIN',
+        team_members: [{
+          email: `desk.${slug}@example.com`, first_name: 'Desk', last_name: 'Staff', role: 'SUPPORT_STAFF', phone,
+          temporary_password: 'Password123!', send_invitation: false,
+        }],
+      },
+    });
+    expect(onboarded.status(), await onboarded.text()).toBe(200);
+    const admin = await loginAs({ email: `admin.${slug}@example.com`, password: 'Password123!' });
+    const desk = await loginAs({ email: `desk.${slug}@example.com`, password: 'Password123!' });
+    try {
+      const created = await admin.ctx.post('/api/v1/patients/', { data: { first_name: uniq('Desk'), last_name: 'Patient' } });
+      expect(created.status(), await created.text()).toBe(200);
+      const patient = await created.json();
+      const made = await admin.ctx.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: soon() } });
+      expect(made.status(), await made.text()).toBe(200);
+      const session = await made.json();
+      const rec = await desk.ctx.post(`/api/v1/sessions/${session.id}/payments`, { data: { amount_paise: 45000, method: 'upi' } });
+      expect(rec.status(), await rec.text()).toBe(200);
+
+      const view = await desk.ctx.get(`/api/v1/sessions/${session.id}/payments`);
+      expect(view.status(), await view.text()).toBe(200);
+      expect(await view.json()).toEqual([expect.objectContaining({ amount_paise: 45000, method: 'upi', status: 'paid' })]);
+      expect((await anon.get(`/api/v1/sessions/${session.id}/payments`)).status()).toBe(401);
+    } finally {
+      await admin.ctx.dispose();
+      await desk.ctx.dispose();
     }
   });
 });
