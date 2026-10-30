@@ -1,5 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { cleanupServices, createService } from '../src/catalog';
 
 /** On VERIFICATION_TEST_PHONES → the backend skips the phone.email round-trip for this number. */
 const TEST_PHONE = '+919876543210';
@@ -11,17 +12,14 @@ const dayAfterTomorrow = () => {
   return d.toISOString().slice(0, 10);
 };
 
-async function ensureService(api: any) {
-  const res = await api.post('/api/v1/catalog/services', {
-    data: { name: uniq('Therapy'), description: 'e2e', duration_minutes: 50, price: 1500, currency: 'INR' },
-  });
-  expect(res.status(), await res.text()).toBe(201);
-  return res.json();
-}
+const created: string[] = [];
+// free: these specs are about booking; api/payments.spec.ts covers priced services
+const ensureService = (api: any) => createService(api, created, { name: uniq('Therapy'), price: 0 });
 
 test.describe('public self-booking (/api/v1/public/booking)', () => {
   requireApi();
   requireAuth();
+  test.afterEach(async ({ api }) => cleanupServices(api, created));
 
   test('unknown clinic code → 404, no token needed', async ({ anon }) => {
     expect((await anon.get('/api/v1/public/booking/no-such-clinic')).status()).toBe(404);
@@ -39,9 +37,8 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
   });
 
   test('a booking becomes a session on the clinic and the therapist calendars; the slot is gone; double-booking is refused', async ({ anon, api, auth }) => {
-    await ensureService(api);
+    const service = await ensureService(api);
     const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
-    const service = info.services[0];
     const practitioner = info.practitioners.find((p: { name: string }) => p.name === DEMO_THERAPIST.name);
     expect(practitioner, 'seeded therapist must be bookable').toBeTruthy();
     const date = dayAfterTomorrow();
@@ -97,15 +94,15 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
   });
 
   test('a phone that is not test-listed needs phone.email proof', async ({ anon, api, auth }) => {
-    await ensureService(api);
+    const service = await ensureService(api);
     const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
     const { slots } = await (
       await anon.get(`/api/v1/public/booking/${auth.firmCode}/slots`, {
-        params: { practitioner_id: info.practitioners[0].id, service_id: info.services[0].id, date: dayAfterTomorrow() },
+        params: { practitioner_id: info.practitioners[0].id, service_id: service.id, date: dayAfterTomorrow() },
       })
     ).json();
     const data = {
-      service_id: info.services[0].id,
+      service_id: service.id,
       practitioner_id: info.practitioners[0].id,
       scheduled_at: slots[0],
       patient: { first_name: 'No', last_name: 'Proof', phone: '+919555555555' },
@@ -119,16 +116,16 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
   });
 
   test('a time that is not on the slot grid is refused', async ({ anon, api, auth }) => {
-    await ensureService(api);
+    const service = await ensureService(api);
     const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
     const { slots } = await (
       await anon.get(`/api/v1/public/booking/${auth.firmCode}/slots`, {
-        params: { practitioner_id: info.practitioners[0].id, service_id: info.services[0].id, date: dayAfterTomorrow() },
+        params: { practitioner_id: info.practitioners[0].id, service_id: service.id, date: dayAfterTomorrow() },
       })
     ).json();
     const offGrid = new Date(new Date(slots[0]).getTime() + 7 * 60_000).toISOString();
     const res = await anon.post(`/api/v1/public/booking/${auth.firmCode}`, {
-      data: { service_id: info.services[0].id, practitioner_id: info.practitioners[0].id, scheduled_at: offGrid, patient: { first_name: 'Off', last_name: 'Grid', phone: TEST_PHONE } },
+      data: { service_id: service.id, practitioner_id: info.practitioners[0].id, scheduled_at: offGrid, patient: { first_name: 'Off', last_name: 'Grid', phone: TEST_PHONE } },
     });
     expect(res.status()).toBe(409);
   });

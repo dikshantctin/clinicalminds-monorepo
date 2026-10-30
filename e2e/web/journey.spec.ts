@@ -2,6 +2,7 @@ import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtur
 import { env, uniq } from '../src/env';
 import { LoginPage } from '../src/pages/login.page';
 import { AddPatientPage } from '../src/pages/patients.page';
+import { adminApi } from '../src/catalog';
 
 /**
  * One clinic, one day, through the browser only (the single API shortcut is time-travelling a
@@ -50,19 +51,29 @@ test.describe('end-to-end clinic journey', () => {
   requireAuth();
   test.use({ storageState: { cookies: [], origins: [] } });
 
+  // the journey's service must not stay bookable in the shared clinic
+  test.afterAll(async () => {
+    const api = await adminApi();
+    const { services } = await (await api.get('/api/v1/catalog/services', { params: { search: serviceName } })).json();
+    for (const s of services ?? []) await api.delete(`/api/v1/catalog/services/${s.id}`);
+    await api.dispose();
+  });
+
   test('1. admin publishes a service, registers a patient and schedules a session', async ({ page }) => {
     await loginAs(page, env.EMAIL, env.PASSWORD);
 
     // service (what patients can book)
     await page.goto('/admin/services');
-    // scoped to the form: index.html has <meta name="description"> too
-    const serviceForm = page.locator('form').filter({ has: page.getByRole('button', { name: 'Add Service' }) });
-    await serviceForm.locator('input[name="name"]').fill(serviceName);
-    await serviceForm.locator('textarea[name="description"]').fill('Journey test service');
-    await serviceForm.locator('input[name="duration_minutes"]').fill('50');
-    await serviceForm.locator('input[name="price"]').fill('0'); // free intro: the online booking below must not hit the pay step
-    await page.getByRole('button', { name: 'Add Service' }).click();
-    await expect(page.getByRole('cell', { name: serviceName })).toBeVisible();
+    await page.getByTestId('service-add').click();
+    const serviceForm = page.getByTestId('service-form-dialog');
+    await serviceForm.getByTestId('service-form-name').fill(serviceName);
+    await serviceForm.getByTestId('service-form-description').fill('Journey test service');
+    await serviceForm.getByTestId('service-form-duration').fill('50');
+    await serviceForm.getByTestId('service-form-price').fill('0'); // free intro: the online booking below must not hit the pay step
+    await serviceForm.getByTestId('service-form-save').click();
+    await expect(serviceForm).toBeHidden();
+    await page.getByTestId('service-search').fill(serviceName);
+    await expect(page.getByTestId('services-table').getByRole('row', { name: new RegExp(serviceName) })).toBeVisible();
 
     // patient
     const form = new AddPatientPage(page);

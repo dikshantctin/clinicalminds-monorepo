@@ -1,5 +1,8 @@
 import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
+import { cleanupServices, createService } from '../src/catalog';
+
+const created: string[] = [];
 
 /**
  * Per-clinic payments in the browser. The booking flow uses whatever Razorpay account the DEMO CLINIC
@@ -65,16 +68,14 @@ test.describe('public booking pays the clinic', () => {
   requireApi();
   requireAuth();
   test.use({ storageState: { cookies: [], origins: [] } }); // a patient has no login
+  test.afterEach(async ({ api }) => cleanupServices(api, created));
 
   test('a Rs 1 service reaches the pay step and opens Razorpay Checkout', async ({ page, api, auth }) => {
     test.skip(!(await gatewayReady(api)), NO_GATEWAY);
-    const svc = await api.post('/api/v1/catalog/services', {
-      data: { name: uniq('Rs 1 test consult'), description: 'e2e', duration_minutes: 50, price: 1, currency: 'INR' },
-    });
-    expect(svc.status(), await svc.text()).toBe(201);
-    const service = await svc.json();
+    const service = await createService(api, created, { name: uniq('Rs 1 test consult'), price: 1 });
 
     await page.goto(`/book/${auth.firmCode}`);
+    await expect(page.getByTestId(`service-${service.id}`)).toContainText('50 min · ₹1');
     await page.getByTestId(`service-${service.id}`).click();
     await page.getByRole('radio', { name: /Jane Doe/ }).click();
     await page.getByTestId('booking-date').fill(bookingDate());
