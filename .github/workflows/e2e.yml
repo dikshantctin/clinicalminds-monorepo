@@ -7,7 +7,16 @@ on:
   push:
     branches: [main]
     paths-ignore: ['**.md']
+  # nightly: backend/frontend at their latest main instead of the pinned commits, to catch a submodule
+  # change that breaks e2e before the monorepo pointer is bumped
+  schedule:
+    - cron: '30 20 * * *' # 02:00 IST
   workflow_dispatch:
+    inputs:
+      submodule_heads:
+        description: Test backend/frontend at their latest main instead of the pinned commits
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,6 +55,27 @@ jobs:
           submodules: recursive
           token: ${{ secrets.SUBMODULES_TOKEN }} # PAT with read access to the private submodule repos
           persist-credentials: false # keep the PAT out of .git/config while third-party installs run
+
+      - name: Backend at latest main (nightly)
+        if: github.event_name == 'schedule' || inputs.submodule_heads
+        uses: actions/checkout@v4
+        with:
+          repository: dikshantctin/clinicalminds-backend
+          path: backend
+          token: ${{ secrets.SUBMODULES_TOKEN }}
+          persist-credentials: false
+
+      - name: Frontend at latest main (nightly)
+        if: github.event_name == 'schedule' || inputs.submodule_heads
+        uses: actions/checkout@v4
+        with:
+          repository: dikshantctin/clinicalminds-frontend
+          path: frontend
+          token: ${{ secrets.SUBMODULES_TOKEN }}
+          persist-credentials: false
+
+      - name: Commits under test
+        run: git submodule status
 
       - uses: actions/setup-python@v5
         with:
