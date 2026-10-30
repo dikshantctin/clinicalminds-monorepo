@@ -83,6 +83,44 @@ test.describe('public booking page (/book/<firmCode>)', () => {
     }
   });
 
+  test('choosing "Any available" books one of the clinicians who offer the service', async ({ page, api, auth }) => {
+    const svc = await api.post('/api/v1/catalog/services', {
+      data: { name: uniq('Any clinician'), duration_minutes: 50, price: 0, currency: 'INR' },
+    });
+    expect(svc.status(), await svc.text()).toBe(201);
+    const service = await svc.json();
+    await assignDemoClinicians(api, service.id);
+    let reference: string | undefined;
+    try {
+      const day = new Date();
+      day.setDate(day.getDate() + 4); // not day +2, which the other booking specs fill
+      await page.goto(`/book/${auth.firmCode}`);
+      await page.getByTestId(`service-${service.id}`).click();
+      await page.getByTestId('practitioner-any').click();
+      await page.getByTestId('booking-date').fill(day.toISOString().slice(0, 10));
+      const slotButtons = page.getByTestId('booking-slots').getByRole('radio');
+      await expect(slotButtons.first()).toBeVisible({ timeout: 15_000 });
+      await slotButtons.last().click();
+
+      await expect(page.getByText(/with any available clinician on/)).toBeVisible();
+      await page.getByTestId('booking-first-name').fill(uniq('Any'));
+      await page.getByTestId('booking-last-name').fill('Booker');
+      await page.getByTestId('booking-phone').fill(TEST_PHONE);
+      await page.getByTestId('booking-submit').click();
+
+      const confirmation = page.getByTestId('booking-confirmation');
+      await expect(confirmation).toBeVisible({ timeout: 15_000 });
+      await expect(confirmation).toContainText(/Jane Doe|John Smith/);
+      reference = (await confirmation.innerText()).match(/Reference: ([0-9a-f-]{36})/)?.[1];
+      expect(reference).toBeTruthy();
+      const session = await (await api.get(`/api/v1/sessions/${reference}`)).json();
+      expect(await demoClinicianIds()).toContain(session.therapist_id);
+    } finally {
+      if (reference) await api.post(`/api/v1/sessions/${reference}/cancel`, { data: { reason: 'e2e cleanup' } });
+      await api.delete(`/api/v1/catalog/services/${service.id}`);
+    }
+  });
+
   test('an unknown clinic code shows a friendly message', async ({ page }) => {
     await page.goto('/book/no-such-clinic');
     await expect(page.getByRole('heading', { name: 'Clinic not found' })).toBeVisible();
