@@ -14,9 +14,9 @@ import { AddPatientPage } from '../src/pages/patients.page';
  */
 test.describe.configure({ mode: 'serial' });
 
-// The journey is the only spec that looks a session up by PATIENT NAME, and the public booking finds-or-creates
-// the patient by phone (newest wins). So it uses the SECOND allow-listed test phone exclusively; every other
-// booking spec shares +919876543210 but keys off the session id, so their cross-attachment is harmless.
+// The journey is the only spec that looks a session up by PATIENT NAME. On the booking page the patient picks
+// themselves from the people the clinic has on their verified number, so the journey uses the SECOND allow-listed
+// test phone exclusively (the shared +919876543210 lists every other spec's patients too).
 const TEST_PHONE = '+919876543211'; // test-listed: the booking page accepts it without the phone.email round-trip
 const THERAPIST = { email: 'therapist.jane@democlinic.com', password: 'Password123!', name: 'Jane Doe' };
 
@@ -95,9 +95,11 @@ test.describe('end-to-end clinic journey', () => {
     const slots = page.getByTestId('booking-slots').getByRole('radio');
     await expect(slots.first()).toBeVisible({ timeout: 15_000 });
     await slots.first().click();
-    await page.getByTestId('booking-first-name').fill(run);
-    await page.getByTestId('booking-last-name').fill('Patient');
     await page.getByTestId('booking-phone').fill(TEST_PHONE);
+    await page.getByTestId('booking-phone').blur();
+    // the patient registered in step 1 is listed on this number: they pick themselves instead of retyping a name
+    await page.getByTestId('booking-for').getByRole('radio', { name: patientFullName }).click();
+    await expect(page.getByTestId('booking-first-name')).toHaveCount(0);
     await page.getByTestId('booking-submit').click();
     await expect(page.getByTestId('booking-confirmation')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('booking-confirmation')).toContainText(THERAPIST.name);
