@@ -51,7 +51,6 @@ test.describe('end-to-end clinic journey', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test('1. admin publishes a service, registers a patient and schedules a session', async ({ page }) => {
-    test.slow(); // ends on the sessions list, which renders every session of the clinic
     await loginAs(page, env.EMAIL, env.PASSWORD);
 
     // service (what patients can book)
@@ -83,8 +82,9 @@ test.describe('end-to-end clinic journey', () => {
     await page.getByRole('button', { name: 'Schedule Session' }).click();
     await expect(page.getByText('Session scheduled successfully!')).toBeVisible();
     await expect(page).toHaveURL(/\/dashboard\/sessions$/);
-    // the sessions list renders every session of the clinic (hundreds on a long-lived dev DB)
-    await expect(page.getByRole('row', { name: new RegExp(patientFullName) }).first()).toBeVisible({ timeout: 20_000 });
+    // the sessions list is paged on the server: search finds this patient's row
+    await page.getByRole('searchbox', { name: 'Search sessions' }).fill(run);
+    await expect(page.getByRole('row', { name: new RegExp(patientFullName) }).first()).toBeVisible();
   });
 
   test('2. the patient books a second slot through the public link', async ({ page, auth }) => {
@@ -107,8 +107,9 @@ test.describe('end-to-end clinic journey', () => {
   test('3. the therapist sees the online booking and starts it', async ({ page }) => {
     await loginAs(page, THERAPIST.email, THERAPIST.password);
     await page.goto('/dashboard/sessions');
+    await page.getByRole('searchbox', { name: 'Search sessions' }).fill(run);
     const row = page.getByRole('row', { name: new RegExp(patientFullName) }).filter({ has: page.getByTestId('booked-online') });
-    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(row).toBeVisible();
     await row.getByTitle('Start Session').click();
     await expect(row).toContainText(/in progress/i, { timeout: 15_000 });
   });
