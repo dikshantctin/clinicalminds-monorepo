@@ -19,10 +19,12 @@ test.describe('/api/v1/tenants', () => {
     }
   });
 
-  test('GET /tenants/{id}/usage and /billing respond', async ({ api, auth }) => {
-    test.fixme(true, 'TenantUsage model (tenant_usage table) has no tenant_id column, but tenants.get_tenant_usage / get_tenant_billing filter on TenantUsage.tenant_id → AttributeError 500');
-    expect((await api.get(`/api/v1/tenants/${auth.tenantId}/usage`)).status()).toBe(200);
-    expect((await api.get(`/api/v1/tenants/${auth.tenantId}/billing`)).status()).toBe(200);
+  test('GET /tenants/{id}/usage and /billing are gone (they 500ed over an empty AI-cost table)', async ({ api, auth }) => {
+    // No screen used them and the tenant_usage table they read is never written, so any number would be invented.
+    expect((await api.get(`/api/v1/tenants/${auth.tenantId}/usage`)).status()).toBe(404);
+    expect((await api.get(`/api/v1/tenants/${auth.tenantId}/billing`)).status()).toBe(404);
+    // the rest of the tenant router is unaffected
+    expect((await api.get(`/api/v1/tenants/${auth.tenantId}`)).status()).toBe(200);
   });
 
   test('PUT /tenants/{id}/branding stores the colour and GET reads it back', async ({ api, auth }) => {
