@@ -45,4 +45,17 @@ test.describe('/api/v1/teams', () => {
       expect(del.status()).toBe(200);
     }
   });
+
+  test('a deleted team leaves the list (still readable with is_active=false)', async ({ api }) => {
+    const name = uniq('GoneTeam');
+    const created = await api.post('/api/v1/teams/teams', { data: { name, team_type: 'CLINICAL', color: '#3B82F6' } });
+    expect(created.status(), await created.text()).toBe(200);
+    const team = await created.json();
+    const listed = async (params: Record<string, string>) =>
+      ((await (await api.get('/api/v1/teams/teams', { params: { search: name, ...params } })).json()).teams as { id: string }[]).map((t) => t.id);
+    expect(await listed({})).toContain(team.id);
+    expect((await api.delete(`/api/v1/teams/teams/${team.id}`)).status()).toBe(200);
+    expect(await listed({})).not.toContain(team.id);
+    expect(await listed({ is_active: 'false' })).toContain(team.id);
+  });
 });
