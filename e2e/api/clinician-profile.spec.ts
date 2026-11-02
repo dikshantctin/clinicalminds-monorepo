@@ -1,6 +1,9 @@
 import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { env, DEMO_THERAPIST, DEMO_PATIENT } from '../src/env';
+import { env, uniq, DEMO_THERAPIST, DEMO_PATIENT } from '../src/env';
+import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
+
+const created: string[] = [];
 
 // A clinician describes themselves in Settings → Profile; patients see it on the booking page.
 async function login(creds: { email: string; password: string }, audience?: 'patient') {
@@ -19,8 +22,12 @@ test.describe('clinician profile', () => {
   requireApi();
   requireAuth();
   test.describe.configure({ mode: 'serial' }); // both tests edit the demo therapist's own profile
+  test.afterEach(async ({ api }) => cleanupServices(api, created));
 
-  test('a clinician saves a profile; GET /users/me and the public booking page show it', async ({ anon, auth }) => {
+  test('a clinician saves a profile; GET /users/me and the public booking page show it', async ({ api, anon, auth }) => {
+    // the booking page lists a clinician only with an assigned service (CI starts with none)
+    const service = await createService(api, created, { name: uniq('Profile') });
+    await assignDemoClinicians(api, service.id);
     const jane = await login(DEMO_THERAPIST);
     const before = (await (await jane.ctx.get('/api/v1/users/me')).json()).profile;
     const profile = {
@@ -37,7 +44,7 @@ test.describe('clinician profile', () => {
 
       const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
       const card = info.practitioners.find((p: { id: string }) => p.id === jane.id);
-      expect(card, 'the demo therapist offers services').toBeTruthy();
+      expect(card, 'the demo therapist offers the new service').toBeTruthy();
       expect(card.profile).toEqual(profile);
     } finally {
       await jane.ctx.put('/api/v1/users/me', { data: { profile: before ?? null } });
