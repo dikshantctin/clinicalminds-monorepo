@@ -11,10 +11,12 @@ import { demoClinicianIds } from '../src/catalog';
 
 const TEST_PHONE = '+919876543210'; // VERIFICATION_TEST_PHONES: no phone.email round-trip
 
-/** A day 3–30 days out, so parallel specs (which use day +2) rarely share our slots. */
+const TAKEN = 'That slot is no longer available';
+
+/** A day 10–29 days out: the other booking specs use fixed days +2…+9, so they never share our slots. */
 const someDay = () => {
   const d = new Date();
-  d.setDate(d.getDate() + 3 + Math.floor(Math.random() * 28));
+  d.setDate(d.getDate() + 10 + Math.floor(Math.random() * 20));
   return d.toISOString().slice(0, 10);
 };
 
@@ -35,8 +37,10 @@ test.describe('public booking: any available clinician', () => {
 
   const services: string[] = [];
   const sessions: string[] = [];
+  const patients: string[] = [];
   test.afterEach(async ({ api }) => {
     for (const id of sessions.splice(0)) await api.post(`/api/v1/sessions/${id}/cancel`, { data: { reason: 'e2e cleanup' } });
+    for (const id of patients.splice(0)) await api.delete(`/api/v1/patients/${id}`);
     for (const id of services.splice(0)) await api.delete(`/api/v1/catalog/services/${id}`);
   });
 
@@ -46,10 +50,28 @@ test.describe('public booking: any available clinician', () => {
     return (await res.json()).slots as string[];
   }
 
-  function book(anon: APIRequestContext, firmCode: string, data: Record<string, unknown>) {
-    return anon.post(`/api/v1/public/booking/${firmCode}`, {
-      data: { patient: { first_name: uniq('Any'), last_name: 'Patient', phone: TEST_PHONE }, ...data },
+  // The shared test phone already has patients, so every booking says it is for someone new.
+  async function book(anon: APIRequestContext, firmCode: string, data: Record<string, unknown>) {
+    const res = await anon.post(`/api/v1/public/booking/${firmCode}`, {
+      data: { patient: { first_name: uniq('Any'), last_name: 'Patient', phone: TEST_PHONE }, new_patient: true, ...data },
     });
+    if (res.status() === 200) {
+      const conf = await res.json();
+      sessions.push(conf.session_id);
+      patients.push(conf.patient_id);
+    }
+    return res;
+  }
+
+  /** Book the first of `slots` still free; a parallel spec that took one first answers 409 TAKEN → try the next. */
+  async function bookFirstFree(anon: APIRequestContext, firmCode: string, slots: string[], data: Record<string, unknown>) {
+    for (const slot of slots) {
+      const res = await book(anon, firmCode, { ...data, scheduled_at: slot });
+      if (res.status() === 409 && (await res.json()).message === TAKEN) continue;
+      expect(res.status(), await res.text()).toBe(200);
+      return { slot, conf: await res.json() };
+    }
+    throw new Error('every candidate slot was taken by parallel specs');
   }
 
   test('"any" slots are the union of the assigned clinicians\' slots (also when practitioner_id is left out)', async ({ api, anon, auth }) => {
@@ -79,18 +101,16 @@ test.describe('public booking: any available clinician', () => {
     services.push(janeOnly, smithOnly);
     const date = someDay();
     const smithFree = new Set(await slotsOf(anon, auth.firmCode, { practitioner_id: smith, service_id: smithOnly, date }));
-    const slot = (await slotsOf(anon, auth.firmCode, { practitioner_id: 'any', service_id: janeOnly, date })).find((s) => smithFree.has(s));
-    expect(slot, 'a time both Jane and Smith are free').toBeTruthy();
+    const both = (await slotsOf(anon, auth.firmCode, { practitioner_id: 'any', service_id: janeOnly, date })).filter((s) => smithFree.has(s));
+    expect(both.length, 'times both Jane and Smith are free').toBeGreaterThan(0);
 
-    const first = await book(anon, auth.firmCode, { service_id: janeOnly, practitioner_id: 'any', scheduled_at: slot });
-    expect(first.status(), await first.text()).toBe(200);
-    const conf = await first.json();
-    sessions.push(conf.session_id);
+    const { slot, conf } = await bookFirstFree(anon, auth.firmCode, both, { service_id: janeOnly, practitioner_id: 'any' });
     expect(conf).toEqual(expect.objectContaining({ practitioner_id: jane, practitioner_name: 'Jane Doe' }));
 
     // Jane is now busy; Smith is free at that time but does not offer the service
     const second = await book(anon, auth.firmCode, { service_id: janeOnly, practitioner_id: 'any', scheduled_at: slot });
     expect(second.status(), await second.text()).toBe(409);
+    expect((await second.json()).message).toBe(TAKEN);
     expect(await slotsOf(anon, auth.firmCode, { practitioner_id: 'any', service_id: janeOnly, date })).not.toContain(slot);
   });
 
@@ -100,21 +120,18 @@ test.describe('public booking: any available clinician', () => {
     services.push(serviceId);
     const date = someDay();
     const smithFree = new Set(await slotsOf(anon, auth.firmCode, { practitioner_id: smith, service_id: serviceId, date }));
-    const slot = (await slotsOf(anon, auth.firmCode, { practitioner_id: jane, service_id: serviceId, date })).find((s) => smithFree.has(s));
-    expect(slot, 'a time both Jane and Smith are free').toBeTruthy();
+    const both = (await slotsOf(anon, auth.firmCode, { practitioner_id: jane, service_id: serviceId, date })).filter((s) => smithFree.has(s));
+    expect(both.length, 'times both Jane and Smith are free').toBeGreaterThan(0);
 
-    const picked: string[] = [];
-    for (const data of [{ practitioner_id: 'any' }, {}]) { // "any" and left out mean the same
-      const res = await book(anon, auth.firmCode, { service_id: serviceId, scheduled_at: slot, ...data });
-      expect(res.status(), await res.text()).toBe(200);
-      const conf = await res.json();
-      sessions.push(conf.session_id);
-      picked.push(conf.practitioner_id);
-    }
+    const { slot, conf: first } = await bookFirstFree(anon, auth.firmCode, both, { service_id: serviceId, practitioner_id: 'any' });
+    const second = await book(anon, auth.firmCode, { service_id: serviceId, scheduled_at: slot }); // left out = "any"
+    expect(second.status(), await second.text()).toBe(200);
+    const picked = [first.practitioner_id, (await second.json()).practitioner_id];
     expect(picked.sort()).toEqual([jane, smith].sort());
 
     const full = await book(anon, auth.firmCode, { service_id: serviceId, practitioner_id: 'any', scheduled_at: slot });
     expect(full.status(), await full.text()).toBe(409);
+    expect((await full.json()).message).toBe(TAKEN);
     expect(await slotsOf(anon, auth.firmCode, { practitioner_id: 'any', service_id: serviceId, date })).not.toContain(slot);
   });
 });
