@@ -76,6 +76,8 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        patient.demo@democlinic.com login), patient-portal (invite → set password → portal
                        login; the login audience picks staff vs PATIENT; an invite never overwrites a password),
                        patients, sessions (offsets, paging, filters, edit),
+                       session-notes-access (a portal patient never gets clinician notes; a clinician
+                       cannot change a colleague's session; unknown session ids → 404),
                        schedules (daily schedule in the clinic time zone),
                        kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
@@ -148,7 +150,6 @@ runs for real. Live status on 2026-10-28: 101 passed, 9 fixme, 5 skipped (de-id 
 |---|---|
 | `api/auth.spec.ts` register | `auth.register` returns placeholder ids, never writes to DB (real signup is `/onboarding/complete`) |
 | `api/otp-onboarding.spec.ts` generate | needs SMTP credentials |
-| `api/tenants.spec.ts` usage/billing | `TenantUsage` model has no `tenant_id` column |
 
 Two Playwright processes must not share `test-results/` (you get `ENOENT … trace` errors, not real
 failures). For a second concurrent run set `PW_OUTPUT_DIR=/tmp/pw-out PW_REPORT_DIR=/tmp/pw-report`.
