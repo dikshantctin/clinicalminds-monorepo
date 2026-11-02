@@ -1,6 +1,8 @@
 import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
-import { assignDemoClinicians, demoClinicianIds } from '../src/catalog';
+import { assignDemoClinicians, cleanupServices, createService, demoClinicianIds } from '../src/catalog';
+
+const created: string[] = [];
 
 const TEST_PHONE = '+919876543210'; // test-listed: no phone.email round-trip needed
 
@@ -15,6 +17,7 @@ test.describe('public booking page (/book/<firmCode>)', () => {
   requireApi();
   requireAuth();
   test.use({ storageState: { cookies: [], origins: [] } }); // a patient has no login
+  test.afterEach(async ({ api }) => cleanupServices(api, created));
 
   test('after choosing a service, only the clinicians who offer it are listed', async ({ page, api, auth }) => {
     const svc = await api.post('/api/v1/catalog/services', {
@@ -38,15 +41,12 @@ test.describe('public booking page (/book/<firmCode>)', () => {
 
   test('a patient books a slot; the clinic sees it as booked online', async ({ page, api, auth, browser }) => {
     // free service: no payment step, whether or not the clinic has connected Razorpay (web/payments.spec.ts covers paid)
-    const svc = await api.post('/api/v1/catalog/services', {
-      data: { name: uniq('Walk-in consult'), description: 'e2e', duration_minutes: 50, price: 0, currency: 'INR' },
-    });
-    expect(svc.status(), await svc.text()).toBe(201);
-    const service = await svc.json();
+    const service = await createService(api, created, { name: uniq('Walk-in consult'), price: 0 });
     await assignDemoClinicians(api, service.id);
 
     await page.goto(`/book/${auth.firmCode}`);
     await expect(page.getByTestId('booking-page')).toBeVisible();
+    await expect(page.getByTestId(`service-${service.id}`)).toContainText('50 min · Free'); // catalog price is rupees
     await page.getByTestId(`service-${service.id}`).click();
     await page.getByRole('radio', { name: /Jane Doe/ }).click();
     await page.getByTestId('booking-date').fill(dayAfterTomorrow());

@@ -1,7 +1,7 @@
 import { createHmac } from 'crypto';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
-import { assignDemoClinicians } from '../src/catalog';
+import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
 
 /**
  * Per-clinic payments: each clinic connects its OWN Razorpay account (Settings → Payments); patients who
@@ -31,14 +31,11 @@ async function gateway(api: any): Promise<{ ready: boolean; keyId: string | null
   return { ready: Boolean(cfg.platform_enabled && cfg.configured && cfg.enabled), keyId: cfg.key_id ?? null, platformEnabled: Boolean(cfg.platform_enabled) };
 }
 
+const created: string[] = [];
 async function service(api: any, price: number) {
-  const res = await api.post('/api/v1/catalog/services', {
-    data: { name: uniq(price ? 'Paid consult' : 'Free intro'), description: 'e2e', duration_minutes: 50, price, currency: 'INR' },
-  });
-  expect(res.status(), await res.text()).toBe(201);
-  const created = await res.json();
-  await assignDemoClinicians(api, created.id);
-  return created;
+  const s = await createService(api, created, { name: uniq(price ? 'Paid consult' : 'Free intro'), price });
+  await assignDemoClinicians(api, s.id);
+  return s;
 }
 
 // Walk the day's free slots from the end, retrying on 409 (another parallel spec may grab the same one).
@@ -108,6 +105,7 @@ test.describe('/api/v1/payments/config — the clinic\'s own Razorpay account', 
 test.describe('public booking paid into the clinic\'s Razorpay account', () => {
   requireApi();
   requireAuth();
+  test.afterEach(async ({ api }) => cleanupServices(api, created));
 
   test('a Rs 1 service creates an order on the clinic\'s account, holds the slot and shows as pending; forged signatures are refused', async ({ anon, api, auth }) => {
     const { ready, keyId } = await gateway(api);
