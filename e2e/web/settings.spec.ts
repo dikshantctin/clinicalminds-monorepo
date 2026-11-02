@@ -9,6 +9,7 @@ const ALL_FEATURES = ['analytics', 'patient_management', 'session_management'];
 test.describe('settings page (admin)', () => {
   requireWeb();
   requireAuth();
+  test.describe.configure({ mode: 'serial' }); // the tests share the admin's own profile and the clinic's settings
 
   test('profile save survives a reload', async ({ page, api }) => {
     const before = await (await api.get('/api/v1/users/me')).json();
@@ -30,6 +31,32 @@ test.describe('settings page (admin)', () => {
       await api.put('/api/v1/users/me', {
         data: { license_number: before.license_number ?? '', specializations: before.specializations ?? [] },
       });
+    }
+  });
+
+  test('what you type before the profile has loaded is kept when it arrives, and saved', async ({ page, api }) => {
+    const before = await (await api.get('/api/v1/users/me')).json();
+    const license = uniq('LATE');
+    // hold the profile response until the user has typed (a slow network)
+    let release!: () => void;
+    const typed = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/api/v1/users/me', async (route) => {
+      if (route.request().method() === 'GET') await typed;
+      await route.continue();
+    });
+    try {
+      await page.goto(SETTINGS);
+      await page.getByTestId('profile-license-number').fill(license);
+      release();
+      // the loaded profile fills the fields the user did not touch, and leaves the typed one alone
+      await expect(page.getByTestId('profile-first-name')).toHaveValue(before.first_name);
+      await expect(page.getByTestId('profile-license-number')).toHaveValue(license);
+      await page.getByTestId('profile-save').click();
+      await expect(page.getByText('Profile Updated.')).toBeVisible();
+      expect((await (await api.get('/api/v1/users/me')).json()).license_number).toBe(license);
+    } finally {
+      await page.unroute('**/api/v1/users/me');
+      await api.put('/api/v1/users/me', { data: { license_number: before.license_number ?? '' } });
     }
   });
 
