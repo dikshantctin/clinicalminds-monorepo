@@ -6,6 +6,13 @@ import { E2E_CLINIC } from '../src/clinics';
 // DELETE /api/v1/dev/tenants/{id}: dev/test-only, so specs can remove the clinics they onboard.
 const ALLOW_LISTED_PHONE = '+919876543211'; // VERIFICATION_TEST_PHONES: onboarding skips phone.email
 const PASSWORD = 'Password123!';
+const NOT_OWNER = "Only the clinic's owner can delete it";
+
+const login = async (ctx: import('@playwright/test').APIRequestContext, email: string) => {
+  const res = await ctx.post('/api/v1/auth/login', { data: { email, password: PASSWORD } });
+  expect(res.status(), await res.text()).toBe(200);
+  return res.json();
+};
 
 test.describe('dev/test-only clinic delete', () => {
   requireApi();
@@ -61,11 +68,48 @@ test.describe('dev/test-only clinic delete', () => {
   });
 
   test('a clinician cannot delete their own clinic (403)', async ({ anon, auth }) => {
-    const login = await anon.post('/api/v1/auth/login', { data: DEMO_THERAPIST });
-    expect(login.status(), await login.text()).toBe(200);
+    const therapist = await anon.post('/api/v1/auth/login', { data: DEMO_THERAPIST });
+    expect(therapist.status(), await therapist.text()).toBe(200);
     const res = await anon.delete(`/api/v1/dev/tenants/${auth.tenantId}`, {
-      headers: { Authorization: `Bearer ${(await login.json()).access_token}` },
+      headers: { Authorization: `Bearer ${(await therapist.json()).access_token}` },
     });
     expect(res.status()).toBe(403);
+    expect((await res.json()).message).toBe(NOT_OWNER);
+  });
+
+  test('the registrant deletes the clinic whatever their role; an admin they invited cannot', async ({ anon }) => {
+    const slug = uniq('own').toLowerCase();
+    const [owner, invited] = [`admin.${slug}@example.com`, `invited.${slug}@example.com`];
+    const onboard = await anon.post('/api/v1/onboarding/complete', {
+      data: {
+        organization: {
+          name: `${E2E_CLINIC} ${slug}`, type: 'clinic', contact_email: `${slug}@example.com`, contact_phone: ALLOW_LISTED_PHONE,
+          address_line1: '1 Road', city: 'Pune', state: 'MH', postal_code: '411001',
+        },
+        plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
+        admin: { email: owner, password: PASSWORD, first_name: 'Owner', last_name: 'Director', phone: ALLOW_LISTED_PHONE },
+        admin_role: 'CLINICAL_DIRECTOR',
+        team_members: [{
+          email: invited, first_name: 'Invited', last_name: 'Admin', role: 'ADMIN', phone: ALLOW_LISTED_PHONE,
+          temporary_password: PASSWORD, send_invitation: false,
+        }],
+      },
+    });
+    expect(onboard.status(), await onboard.text()).toBe(200);
+    const director = await login(anon, owner);
+    expect(director.user.role).toBe('CLINICAL_DIRECTOR');
+    const admin = await login(anon, invited);
+    expect(admin.user.role).toBe('ADMIN');
+    expect(admin.tenant.id).toBe(director.tenant.id);
+    const url = `/api/v1/dev/tenants/${director.tenant.id}`;
+
+    const byInvitedAdmin = await anon.delete(url, { headers: { Authorization: `Bearer ${admin.access_token}` } });
+    expect(byInvitedAdmin.status()).toBe(403);
+    expect((await byInvitedAdmin.json()).message).toBe(NOT_OWNER);
+
+    expect((await anon.delete(url, { headers: { Authorization: `Bearer ${director.access_token}` } })).status()).toBe(204);
+    for (const email of [owner, invited]) {
+      expect((await anon.post('/api/v1/auth/login', { data: { email, password: PASSWORD } })).status()).toBe(401);
+    }
   });
 });

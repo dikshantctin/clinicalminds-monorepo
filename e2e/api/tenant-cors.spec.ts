@@ -28,7 +28,7 @@ test.describe('CORS origins from the platform DB', () => {
   requireApi();
   const created: string[] = [];
   test.afterAll(async () => {
-    for (const email of created) await deleteClinic(email);
+    for (const email of created.splice(0)) await deleteClinic(email); // afterAll runs per test (fullyParallel)
   });
 
   test('the shared app origin is allowed', async ({ anon }) => {

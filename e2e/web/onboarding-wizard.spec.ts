@@ -1,5 +1,6 @@
 import { test, expect, requireWeb } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { deleteClinic } from '../src/clinics';
 import type { Page } from '@playwright/test';
 
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -20,6 +21,10 @@ async function fillOrganization(page: Page, id: string) {
 
 test.describe('onboarding wizard validation', () => {
   requireWeb();
+  const created: string[] = [];
+  test.afterAll(async () => {
+    for (const email of created.splice(0)) await deleteClinic(email); // afterAll runs per test (fullyParallel)
+  });
 
   test('step 1: bad email, bad phone and no type block Next with visible errors; valid input proceeds', async ({ page }) => {
     await page.goto('/auth/register');
@@ -106,6 +111,7 @@ test.describe('onboarding wizard validation', () => {
 
     await next(page).click(); // branding
     const validate = page.waitForRequest('**/api/v1/onboarding/validate');
+    const complete = page.waitForResponse('**/api/v1/onboarding/complete');
     await next(page).click(); // review
     await expect(stepHeading(page)).toHaveText('Review & Complete');
     await expect(page.getByText('Country', { exact: true })).toBeVisible();
@@ -115,5 +121,8 @@ test.describe('onboarding wizard validation', () => {
     expect(body.plan.features).not.toHaveProperty('ai_enabled');
     expect(body.plan.features).not.toHaveProperty('crisis_detection');
     expect(body.team_members[0]).not.toHaveProperty('phone'); // empty optional fields are left out
+    const done = await complete; // the wizard really creates the clinic: delete it in afterAll
+    expect(done.status(), await done.text()).toBe(200);
+    created.push(`${id}-admin@example.com`);
   });
 });

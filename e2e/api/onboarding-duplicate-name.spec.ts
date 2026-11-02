@@ -19,7 +19,7 @@ test.describe('onboarding two clinics with the same name', () => {
   requireApi();
   const created: string[] = [];
   test.afterAll(async () => {
-    for (const email of created) await deleteClinic(email);
+    for (const email of created.splice(0)) await deleteClinic(email); // afterAll runs per test (fullyParallel)
   });
 
   test('both are created as separate tenants', async ({ anon }) => {
