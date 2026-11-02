@@ -1,7 +1,7 @@
 import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_THERAPIST } from '../src/env';
-import { cleanupServices, createService } from '../src/catalog';
+import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
 
 /** /api/v1/catalog: services (what patients book) and locations, managed by ADMIN / CLINICAL_DIRECTOR. */
 
@@ -78,6 +78,7 @@ test.describe('catalog services', () => {
 
   test('a deactivated service leaves the public booking page; is_active filters the list', async ({ api, anon, auth }) => {
     const service = await createService(api, created, { name: uniq('Catalog deactivate') });
+    await assignDemoClinicians(api, service.id); // booking lists a service only with assigned clinicians
     const listed = async () =>
       ((await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json()).services as Array<{ id: string }>).some(
         (s) => s.id === service.id,
