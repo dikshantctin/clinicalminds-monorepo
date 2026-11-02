@@ -60,6 +60,7 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
       practitioner_id: practitioner.id,
       scheduled_at: slot,
       patient: { first_name: uniq('Book'), last_name: 'Patient', phone: TEST_PHONE, email: 'booking@example.com' },
+      new_patient: true, // the shared test phone already has patients: book as someone new
       notes: 'e2e booking',
     };
     const booked = await anon.post(`/api/v1/public/booking/${auth.firmCode}`, { data: body });
@@ -98,6 +99,36 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
       const cancelled = await api.post(`/api/v1/sessions/${conf.session_id}/cancel`, { data: { reason: 'e2e cleanup' } });
       expect(cancelled.status(), await cancelled.text()).toBe(200);
     }
+  });
+
+  test('one slot, booked by several patients at once: exactly one booking wins, the rest are 409', async ({ anon, api, auth }) => {
+    const service = await ensureService(api);
+    const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
+    const practitioner = info.practitioners.find((p: { name: string }) => p.name === DEMO_THERAPIST.name);
+    // a day no other spec books on, so the only contention is the one this test creates
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    const slotParams = { practitioner_id: practitioner.id, service_id: service.id, date: d.toISOString().slice(0, 10) };
+    const { slots } = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}/slots`, { params: slotParams })).json();
+    expect(slots.length).toBeGreaterThan(0);
+    const book = (slot: string) =>
+      anon.post(`/api/v1/public/booking/${auth.firmCode}`, {
+        data: { service_id: service.id, practitioner_id: practitioner.id, scheduled_at: slot, patient: { first_name: uniq('Race'), last_name: 'Patient', phone: TEST_PHONE } },
+      });
+    // walk the free slots: a slot a parallel copy of this test took first answers 409 to all four — try the next
+    for (const slot of slots) {
+      const results = await Promise.all([book(slot), book(slot), book(slot), book(slot)]);
+      const won = results.filter((r) => r.status() === 200);
+      try {
+        if (won.length === 0 && results.every((r) => r.status() === 409)) continue;
+        expect(results.map((r) => r.status()).sort()).toEqual([200, 409, 409, 409]);
+        for (const r of results.filter((x) => x.status() === 409)) expect((await r.json()).message).toBe('That slot is no longer available');
+        return;
+      } finally {
+        for (const r of won) await api.post(`/api/v1/sessions/${(await r.json()).session_id}/cancel`, { data: { reason: 'e2e cleanup' } });
+      }
+    }
+    throw new Error('every slot of the day was taken by parallel specs');
   });
 
   test('a phone that is not test-listed needs phone.email proof', async ({ anon, api, auth }) => {
