@@ -1,5 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { assignDemoClinicians } from '../src/catalog';
 
 /**
  * The catalog stores a service price in rupees; a booking charges `round(price * 100)` paise, and only
@@ -21,7 +22,10 @@ async function createService(api: any, price: number) {
     data: { name: uniq('Priced consult'), description: 'e2e', duration_minutes: 50, price, currency: 'INR' },
   });
   expect(res.status(), await res.text()).toBe(201);
-  return res.json();
+  const service = await res.json();
+  // booking lists a service only with the clinicians an admin linked; deleting the service drops the links
+  await assignDemoClinicians(api, service.id);
+  return service;
 }
 
 // Walk the day's free slots from the end, retrying on 409 (a parallel spec may take the same one).
@@ -36,9 +40,10 @@ async function book(anon: any, firmCode: string, serviceId: string) {
   expect(slots.length, 'free slots to book').toBeGreaterThan(0);
   for (const slot of [...slots].reverse()) {
     const res = await anon.post(`/api/v1/public/booking/${firmCode}`, {
-      data: { service_id: serviceId, practitioner_id: practitioner.id, scheduled_at: slot, patient: { first_name: uniq('Price'), last_name: 'Patient', phone: TEST_PHONE } },
+      // new_patient: other specs leave patients on the shared test phone, and without it the booking asks who it is for
+      data: { service_id: serviceId, practitioner_id: practitioner.id, scheduled_at: slot, new_patient: true, patient: { first_name: uniq('Price'), last_name: 'Patient', phone: TEST_PHONE } },
     });
-    if (res.status() === 409) continue;
+    if (res.status() === 409 && (await res.json()).message === 'That slot is no longer available') continue;
     expect(res.status(), await res.text()).toBe(200);
     return res.json();
   }
@@ -52,6 +57,7 @@ test.describe('public booking prices: what the page shows is what is charged', (
   test('a ₹1,500.50 service is listed as 150050 paise, and a booking charges exactly 150050', async ({ anon, api, auth }) => {
     const service = await createService(api, 1500.5);
     let sessionId: string | undefined;
+    let patientId: string | undefined;
     try {
       expect(service.price).toBe(1500.5);
       const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
@@ -64,11 +70,13 @@ test.describe('public booking prices: what the page shows is what is charged', (
       test.skip(!info.payments_enabled, 'the demo clinic has no Razorpay account connected: order amount not exercised');
       const conf = await book(anon, auth.firmCode, service.id);
       sessionId = conf.session_id;
+      patientId = conf.patient_id;
       expect(conf.payment_status).toBe('pending');
       expect(conf.payment.amount_paise).toBe(150050);
       expect(conf.payment.currency).toBe('INR');
     } finally {
       if (sessionId) await api.post(`/api/v1/sessions/${sessionId}/cancel`, { data: { reason: 'e2e cleanup' } });
+      if (patientId) await api.delete(`/api/v1/patients/${patientId}`);
       await api.delete(`/api/v1/catalog/services/${service.id}`);
     }
   });
@@ -76,6 +84,7 @@ test.describe('public booking prices: what the page shows is what is charged', (
   test('₹0.50 is below the ₹1 minimum: listed as 50 paise, not paid at booking, no order', async ({ anon, api, auth }) => {
     const service = await createService(api, 0.5);
     let sessionId: string | undefined;
+    let patientId: string | undefined;
     try {
       const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
       const listed = info.services.find((s: { id: string }) => s.id === service.id);
@@ -85,10 +94,12 @@ test.describe('public booking prices: what the page shows is what is charged', (
       test.skip(!info.payments_enabled, 'the demo clinic has no Razorpay account connected: "no order" is trivially true');
       const conf = await book(anon, auth.firmCode, service.id);
       sessionId = conf.session_id;
+      patientId = conf.patient_id;
       expect(conf.payment).toBeNull();
       expect(conf.payment_status).toBeNull();
     } finally {
       if (sessionId) await api.post(`/api/v1/sessions/${sessionId}/cancel`, { data: { reason: 'e2e cleanup' } });
+      if (patientId) await api.delete(`/api/v1/patients/${patientId}`);
       await api.delete(`/api/v1/catalog/services/${service.id}`);
     }
   });

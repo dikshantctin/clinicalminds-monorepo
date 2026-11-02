@@ -1,5 +1,6 @@
 import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { assignDemoClinicians } from '../src/catalog';
 
 /** The booking page shows the amount a booking charges (paise from the API), and a pay step only when it charges. */
 test.describe('public booking page prices (/book/<firmCode>)', () => {
@@ -14,7 +15,9 @@ test.describe('public booking page prices (/book/<firmCode>)', () => {
         data: { name: uniq('Priced web consult'), description: 'e2e', duration_minutes: 50, price, currency: 'INR' },
       });
       expect(res.status(), await res.text()).toBe(201);
-      return res.json();
+      const service = await res.json();
+      await assignDemoClinicians(api, service.id); // booking lists only services with linked clinicians
+      return service;
     };
     const priced = await create(1500.5);
     const tiny = await create(0.5);
