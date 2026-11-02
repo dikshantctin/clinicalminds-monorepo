@@ -7,6 +7,9 @@ import { RAZORPAY, uniq } from '../src/env';
  * no secret is needed here. The actual payment (test card / success@razorpay UPI) is a manual check — see
  * e2e/README.md. E2E_RAZORPAY_* stays optional: it only drives the "type a fresh secret" write test.
  */
+// a trace records every fill() value and CI uploads failed traces: never let one capture the Razorpay secret
+test.use({ trace: 'off' });
+
 const TEST_PHONE = '+919876543210';
 const haveSecret = Boolean(RAZORPAY.keyId && RAZORPAY.keySecret);
 const NO_GATEWAY = 'the demo clinic has no Razorpay account connected — connect one in Settings → Payments (or run backend/scripts/connect_demo_razorpay.py)';
@@ -27,8 +30,6 @@ test.describe('Settings → Payments (clinic admin)', () => {
   requireWeb();
   requireApi();
   requireAuth();
-  // a trace records every fill() value, and CI uploads failed traces: never let it capture the Razorpay secret
-  test.use({ trace: 'off' });
 
   test('the Payments tab renders for the admin with the connection status and the key form', async ({ page }) => {
     await page.goto('/dashboard/settings');
