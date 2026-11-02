@@ -27,6 +27,8 @@ test.describe('Settings → Payments (clinic admin)', () => {
   requireWeb();
   requireApi();
   requireAuth();
+  // a trace records every fill() value, and CI uploads failed traces: never let it capture the Razorpay secret
+  test.use({ trace: 'off' });
 
   test('the Payments tab renders for the admin with the connection status and the key form', async ({ page }) => {
     await page.goto('/dashboard/settings');
