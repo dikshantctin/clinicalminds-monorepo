@@ -76,6 +76,8 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        patient.demo@democlinic.com login), patient-portal (invite → set password → portal
                        login; the login audience picks staff vs PATIENT; an invite never overwrites a password),
                        patients, sessions (offsets, paging, filters, edit),
+                       session-notes-access (a portal patient never gets clinician notes; a clinician
+                       cannot change a colleague's session; unknown session ids → 404),
                        schedules (daily schedule in the clinic time zone),
                        kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
