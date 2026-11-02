@@ -44,16 +44,21 @@ test.describe('onboarding wizard validation', () => {
     await expect(stepHeading(page)).toHaveText('Choose Your Plan');
   });
 
-  test('step 2: plan cards show exact limits and no removed AI/crisis/analytics features', async ({ page }) => {
+  test('step 2: plan cards show exact limits and promise no feature that does not exist', async ({ page }) => {
     await page.goto('/auth/register');
     await fillOrganization(page, uniq('onb-web'));
     await next(page).click();
     await expect(page.getByTestId('plan-trial-limits')).toHaveText('5 users · 100 patients · 500 sessions/mo');
     await expect(page.getByTestId('plan-basic-limits')).toHaveText('10 users · 300 patients · 1,200 sessions/mo');
     await expect(page.getByTestId('plan-enterprise-limits')).toHaveText('100 users · 5,000 patients · 20,000 sessions/mo');
-    for (const removed of [/\bAI\b/, /crisis/i, /analytics/i]) {
-      await expect(page.getByRole('radiogroup')).not.toContainText(removed);
+    // removed (AI, crisis, analytics) or never built (audit logs screen, data export, subscription billing,
+    // clinic API keys, reports beyond the overview, locations used by booking/scheduling)
+    for (const missing of [/\bAI\b/, /crisis/i, /analytics/i, /audit logs?/i, /data export/i, /billing/i, /api access/i, /reporting/i, /multi.?location/i]) {
+      await expect(page.getByRole('radiogroup')).not.toContainText(missing);
     }
+    // what the plans do include is still listed
+    await expect(page.getByRole('radiogroup')).toContainText('Patient Management');
+    await expect(page.getByRole('radiogroup')).toContainText('Custom Branding');
   });
 
   test('step 3: bad admin email/phone block Next; valid input proceeds; payload carries country and no AI flags', async ({ page }) => {
