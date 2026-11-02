@@ -1,6 +1,7 @@
 import { APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { assignDemoClinicians, demoClinicianIds } from '../src/catalog';
 
 /**
  * Several people can book on one phone (a parent booking for a child). After the phone is verified, the booking
@@ -16,8 +17,10 @@ async function setup(anon: APIRequestContext, api: APIRequestContext, firmCode: 
   const svc = await api.post('/api/v1/catalog/services', { data: { name: uniq('SharedPhone'), duration_minutes: 50, price: 0, currency: 'INR' } });
   expect(svc.status(), await svc.text()).toBe(201);
   const service = await svc.json();
+  await assignDemoClinicians(api, service.id); // a new service is bookable only once clinicians are linked to it
+  const [janeId] = await demoClinicianIds();
   const info = await (await anon.get(`/api/v1/public/booking/${firmCode}`)).json();
-  const practitioner = info.practitioners[0];
+  const practitioner = info.practitioners.find((p: { id: string }) => p.id === janeId);
   const { slots } = await (await anon.get(`/api/v1/public/booking/${firmCode}/slots`, {
     params: { practitioner_id: practitioner.id, service_id: service.id, date: inDays(day) },
   })).json();
