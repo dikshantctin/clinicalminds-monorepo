@@ -23,6 +23,19 @@ test.describe('POST /api/v1/auth/login', () => {
     expect((await res.json()).message).toBe('Invalid email or password');
   });
 
+  test('matches the email regardless of case', async ({ anon }) => {
+    requireAuth();
+    const mixed = env.EMAIL.replace(/^./, (c) => c.toUpperCase()).replace(/@.*/, (d) => d.toUpperCase());
+    expect(mixed).not.toBe(env.EMAIL);
+    const res = await anon.post('/api/v1/auth/login', { data: { email: mixed, password: env.PASSWORD } });
+    expect(res.status(), await res.text()).toBe(200);
+    expect((await res.json()).user.email).toBe(env.EMAIL.toLowerCase());
+
+    const wrong = await anon.post('/api/v1/auth/login', { data: { email: mixed, password: 'definitely-wrong' } });
+    expect(wrong.status()).toBe(401);
+    expect((await wrong.json()).message).toBe('Invalid email or password');
+  });
+
   test('rejects an unknown email with 401 (no enumeration)', async ({ anon }) => {
     const res = await anon.post('/api/v1/auth/login', { data: { email: `${uniq('nobody')}@example.com`, password: 'whatever123' } });
     expect(res.status()).toBe(401);
@@ -85,18 +98,23 @@ test.describe('authenticated auth endpoints', () => {
 test.describe('stubbed auth flows (documented, not yet implemented)', () => {
   requireApi();
 
-  test('POST /auth/register creates a tenant and admin', async ({ anon }) => {
-    test.fixme(true, 'register_user_and_tenant never writes to the DB and returns placeholder ids; real signup is /api/v1/onboarding/complete');
-    const res = await anon.post('/api/v1/auth/register', {
-      data: {
-        organization_name: uniq('Org'),
-        organization_type: 'clinic',
-        contact_email: `${uniq('org')}@example.com`,
-        admin_user: { email: `${uniq('admin')}@example.com`, password: 'password123', first_name: 'A', last_name: 'B' },
-      },
-    });
-    expect(res.status()).toBe(200);
-    expect((await res.json()).tenant.id).not.toBe('new_tenant_id');
+  test('POST /auth/register is gone (real signup is /onboarding/complete)', async ({ anon, api }) => {
+    requireAuth();
+    const data = {
+      organization_name: uniq('Org'),
+      organization_type: 'clinic',
+      contact_email: `${uniq('org')}@example.com`,
+      admin_user: { email: `${uniq('admin')}@example.com`, password: 'Password123!', first_name: 'A', last_name: 'B' },
+    };
+    // No longer a public path: the auth middleware answers before routing, so an anonymous caller gets 401.
+    const res = await anon.post('/api/v1/auth/register', { data });
+    expect(res.status()).toBe(401);
+    expect(await res.json()).toEqual({ detail: 'Authentication required' });
+
+    // With a token the request reaches the router, which has no such route.
+    const authed = await api.post('/api/v1/auth/register', { data });
+    expect(authed.status()).toBe(404);
+    expect(await authed.json()).toEqual({ detail: 'Not Found' });
   });
 
   test('POST /auth/request-password-reset always answers 200 without leaking existence', async ({ anon }) => {
