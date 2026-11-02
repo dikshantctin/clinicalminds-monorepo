@@ -1,6 +1,7 @@
 import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq } from '../src/env';
+import { assignDemoClinicians, demoClinicianIds } from '../src/catalog';
 
 /**
  * Every clinic-local day is the clinic's own zone (platform_firms.timezone), not Asia/Kolkata:
@@ -59,7 +60,11 @@ async function onboardNewYorkClinic(): Promise<Clinic> {
       data: { name: 'Therapy', description: 'e2e', duration_minutes: 50, price: 0, currency: 'USD' },
     });
     expect(service.status(), await service.text()).toBe(201);
-    return { api, firmCode: tenant.firm_code, practitionerId: user.id, serviceId: (await service.json()).id };
+    const serviceId = (await service.json()).id;
+    // booking offers a service only with the clinicians an admin linked to it
+    const linked = await api.put(`/api/v1/catalog/services/${serviceId}/clinicians`, { data: { clinician_ids: [user.id] } });
+    expect(linked.status(), await linked.text()).toBe(200);
+    return { api, firmCode: tenant.firm_code, practitionerId: user.id, serviceId };
   } finally {
     await anon.dispose();
   }
@@ -176,17 +181,24 @@ test.describe('clinic time zone (platform_firms.timezone) everywhere', () => {
       data: { name: uniq('Therapy'), description: 'e2e', duration_minutes: 50, price: 0, currency: 'INR' },
     });
     expect(service.status(), await service.text()).toBe(201);
-    const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
-    const istDay = localDate(new Date(Date.now() + 8 * 86_400_000), IST);
-    const res = await anon.get(`/api/v1/public/booking/${auth.firmCode}/slots`, {
-      params: { practitioner_id: info.practitioners[0].id, service_id: info.services[0].id, date: istDay },
-    });
-    expect(res.status(), await res.text()).toBe(200);
-    const { slots } = (await res.json()) as { slots: string[] };
-    expect(slots.length).toBeGreaterThan(0);
-    for (const s of slots) {
-      expect(localDate(s, IST)).toBe(istDay);
-      expect(wallClock(s, IST) >= '10:00' && wallClock(s, IST) <= '17:30').toBe(true);
+    const serviceId = (await service.json()).id;
+    try {
+      // a pair that is bookable: this service, linked to the demo clinicians
+      await assignDemoClinicians(api, serviceId);
+      const [practitionerId] = await demoClinicianIds();
+      const istDay = localDate(new Date(Date.now() + 8 * 86_400_000), IST);
+      const res = await anon.get(`/api/v1/public/booking/${auth.firmCode}/slots`, {
+        params: { practitioner_id: practitionerId, service_id: serviceId, date: istDay },
+      });
+      expect(res.status(), await res.text()).toBe(200);
+      const { slots } = (await res.json()) as { slots: string[] };
+      expect(slots.length).toBeGreaterThan(0);
+      for (const s of slots) {
+        expect(localDate(s, IST)).toBe(istDay);
+        expect(wallClock(s, IST) >= '10:00' && wallClock(s, IST) <= '17:30').toBe(true);
+      }
+    } finally {
+      await api.delete(`/api/v1/catalog/services/${serviceId}`);
     }
 
     const { week_start } = await (await api.get('/api/v1/analytics/overview')).json();
