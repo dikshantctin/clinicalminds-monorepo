@@ -167,9 +167,13 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
     try {
       const day = istDate(new Date(Date.now() + 3 * 86_400_000));
       await page.goto(`/dashboard/sessions/new?patient_id=${patient.id}`);
+      // The patient <select> is `required` and gets its options from GET /patients: submitting before that
+      // list arrives fails native validation silently (no POST). Wait until the patient is actually chosen.
+      await expect(page.getByRole('combobox', { name: 'Patient', exact: true })).toHaveValue(patient.id);
       await page.getByLabel('Date & Time').fill(`${day}T10:00`);
-      // dispatchEvent: the dev-only AuthDebug panel overlaps the submit button at 1280x720 (QA P3)
-      await page.getByRole('button', { name: 'Schedule Session' }).dispatchEvent('click');
+      const created = page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/sessions/');
+      await page.getByRole('button', { name: 'Schedule Session' }).click();
+      expect((await created).status()).toBe(200);
       await expect(page).toHaveURL(/\/dashboard\/sessions$/);
       const { sessions } = await (await api.get('/api/v1/sessions/', { params: { patient_id: patient.id } })).json();
       expect(sessions.map((s: { scheduled_at: string; session_type: string }) => [new Date(s.scheduled_at).toISOString(), s.session_type])).toEqual([
@@ -196,7 +200,9 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
   test('the dashboard grid puts a session in its clinic-time slot', async ({ page, api }) => {
     const hourIst = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
     test.skip(hourIst + 1 > 19, 'the dashboard grid shows today until 20:00 clinic time; no future slot left today');
-    const hh = String(hourIst + 1).padStart(2, '0');
+    // The grid starts at 08:00 (APP_CONFIG.CALENDAR_START_HOUR): before 07:00 IST the next hour has no slot,
+    // so book the first slot of the day instead (still in the future). CI runs at night IST.
+    const hh = String(Math.max(hourIst + 1, 8)).padStart(2, '0');
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('GridUI'), last_name: 'Patient' } })).json();
     try {
       const res = await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: `${istDate(new Date())}T${hh}:00:00+05:30` } });
