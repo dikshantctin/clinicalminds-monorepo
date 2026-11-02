@@ -113,7 +113,7 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
     expect(slots.length).toBeGreaterThan(0);
     const book = (slot: string) =>
       anon.post(`/api/v1/public/booking/${auth.firmCode}`, {
-        data: { service_id: service.id, practitioner_id: practitioner.id, scheduled_at: slot, patient: { first_name: uniq('Race'), last_name: 'Patient', phone: TEST_PHONE } },
+        data: { service_id: service.id, practitioner_id: practitioner.id, scheduled_at: slot, new_patient: true, patient: { first_name: uniq('Race'), last_name: 'Patient', phone: TEST_PHONE } },
       });
     // walk the free slots: a slot a parallel copy of this test took first answers 409 to all four — try the next
     for (const slot of slots) {
