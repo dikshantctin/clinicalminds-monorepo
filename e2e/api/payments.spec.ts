@@ -52,7 +52,7 @@ async function bookASlot(anon: any, firmCode: string, serviceId: string, daysAhe
   expect(slots.length, 'free slots to book').toBeGreaterThan(0);
   for (const slot of [...slots].reverse()) {
     const res = await anon.post(`/api/v1/public/booking/${firmCode}`, {
-      data: { service_id: serviceId, practitioner_id: practitioner.id, scheduled_at: slot, patient: { first_name: uniq('Pay'), last_name: 'Patient', phone: TEST_PHONE } },
+      data: { service_id: serviceId, practitioner_id: practitioner.id, scheduled_at: slot, patient: { first_name: uniq('Pay'), last_name: 'Patient', phone: TEST_PHONE }, new_patient: true },
     });
     if (res.status() === 409) continue;
     expect(res.status(), await res.text()).toBe(200);
