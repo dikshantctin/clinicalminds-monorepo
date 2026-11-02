@@ -1,6 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
-import { cleanupServices, createService } from '../src/catalog';
+import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
 
 /** On VERIFICATION_TEST_PHONES → the backend skips the phone.email round-trip for this number. */
 const TEST_PHONE = '+919876543210';
@@ -13,8 +13,13 @@ const dayAfterTomorrow = () => {
 };
 
 const created: string[] = [];
-// free: these specs are about booking; api/payments.spec.ts covers priced services
-const ensureService = (api: any) => createService(api, created, { name: uniq('Therapy'), price: 0 });
+// free: these specs are about booking; api/payments.spec.ts covers priced services.
+// Booking offers a service only with the clinicians an admin assigned, so give it the demo pair.
+async function ensureService(api: any) {
+  const service = await createService(api, created, { name: uniq('Therapy'), price: 0 });
+  await assignDemoClinicians(api, service.id);
+  return service;
+}
 
 test.describe('public self-booking (/api/v1/public/booking)', () => {
   requireApi();
@@ -70,7 +75,9 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
       expect((await anon.post(`/api/v1/public/booking/${auth.firmCode}`, { data: body })).status()).toBe(409);
 
       // clinic view (admin): the session exists, flagged as booked online
-      const clinic = await (await api.get('/api/v1/sessions/', { params: { limit: 500 } })).json();
+      // only that day: the shared demo clinic has well over 500 sessions, newest first
+      const day = { date_from: date, date_to: date, limit: 500 };
+      const clinic = await (await api.get('/api/v1/sessions/', { params: day })).json();
       const row = clinic.sessions.find((s: { id: string }) => s.id === conf.session_id);
       expect(row).toBeTruthy();
       expect(row.booked_via).toBe('web');
@@ -80,7 +87,7 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
       const login = await (await anon.post('/api/v1/auth/login', { data: { email: DEMO_THERAPIST.email, password: DEMO_THERAPIST.password } })).json();
       const mine = await (
         await anon.get('/api/v1/sessions/', {
-          params: { limit: 500 },
+          params: day,
           headers: { Authorization: `Bearer ${login.access_token}`, 'X-Tenant-ID': login.tenant.id },
         })
       ).json();

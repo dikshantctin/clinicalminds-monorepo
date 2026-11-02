@@ -2,7 +2,7 @@ import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtur
 import { env, uniq } from '../src/env';
 import { LoginPage } from '../src/pages/login.page';
 import { AddPatientPage } from '../src/pages/patients.page';
-import { adminApi } from '../src/catalog';
+import { adminApi, assignDemoClinicians } from '../src/catalog';
 
 /**
  * One clinic, one day, through the browser only (the single API shortcut is time-travelling a
@@ -59,7 +59,7 @@ test.describe('end-to-end clinic journey', () => {
     await api.dispose();
   });
 
-  test('1. admin publishes a service, registers a patient and schedules a session', async ({ page }) => {
+  test('1. admin publishes a service, registers a patient and schedules a session', async ({ page, api }) => {
     await loginAs(page, env.EMAIL, env.PASSWORD);
 
     // service (what patients can book)
@@ -74,6 +74,9 @@ test.describe('end-to-end clinic journey', () => {
     await expect(serviceForm).toBeHidden();
     await page.getByTestId('service-search').fill(serviceName);
     await expect(page.getByTestId('services-table').getByRole('row', { name: new RegExp(serviceName) })).toBeVisible();
+    // assign who offers it (booking offers a service only with assigned clinicians); the form has no picker yet
+    const { services } = await (await api.get('/api/v1/catalog/services', { params: { search: serviceName } })).json();
+    await assignDemoClinicians(api, services[0].id);
 
     // patient
     const form = new AddPatientPage(page);

@@ -1,7 +1,7 @@
 import { createHmac } from 'crypto';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
-import { cleanupServices, createService } from '../src/catalog';
+import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
 
 /**
  * Per-clinic payments: each clinic connects its OWN Razorpay account (Settings → Payments); patients who
@@ -32,7 +32,11 @@ async function gateway(api: any): Promise<{ ready: boolean; keyId: string | null
 }
 
 const created: string[] = [];
-const service = (api: any, price: number) => createService(api, created, { name: uniq(price ? 'Paid consult' : 'Free intro'), price });
+async function service(api: any, price: number) {
+  const s = await createService(api, created, { name: uniq(price ? 'Paid consult' : 'Free intro'), price });
+  await assignDemoClinicians(api, s.id);
+  return s;
+}
 
 // Walk the day's free slots from the end, retrying on 409 (another parallel spec may grab the same one).
 async function bookASlot(anon: any, firmCode: string, serviceId: string) {

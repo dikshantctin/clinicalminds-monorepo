@@ -1,6 +1,6 @@
 import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
-import { cleanupServices, createService } from '../src/catalog';
+import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
 
 const created: string[] = [];
 
@@ -73,6 +73,7 @@ test.describe('public booking pays the clinic', () => {
   test('a Rs 1 service reaches the pay step and opens Razorpay Checkout', async ({ page, api, auth }) => {
     test.skip(!(await gatewayReady(api)), NO_GATEWAY);
     const service = await createService(api, created, { name: uniq('Rs 1 test consult'), price: 1 });
+    await assignDemoClinicians(api, service.id);
 
     await page.goto(`/book/${auth.firmCode}`);
     await expect(page.getByTestId(`service-${service.id}`)).toContainText('50 min · ₹1');
