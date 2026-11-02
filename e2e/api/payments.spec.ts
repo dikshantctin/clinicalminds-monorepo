@@ -1,6 +1,7 @@
 import { createHmac } from 'crypto';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
+import { acquireLock, releaseLock } from '../src/lock';
 
 /**
  * Per-clinic payments: each clinic connects its OWN Razorpay account (Settings → Payments); patients who
@@ -162,8 +163,15 @@ test.describe('public booking paid into the clinic\'s Razorpay account', () => {
     }
   });
 
-  // Both tests write the demo clinic's single webhook secret: run them one after the other, never side by side.
+  // Both tests write the demo clinic's single webhook secret: run them one after the other, never side by side
+  // (and never beside web/payments.spec.ts, which also writes it: the lock spans files and workers).
   test.describe.serial('webhook secret', () => {
+    test.beforeAll(async () => {
+      test.setTimeout(120_000);
+      await acquireLock('webhook-secret');
+    });
+    test.afterAll(() => releaseLock('webhook-secret'));
+
     test('a signed payment.captured webhook marks the order paid without the browser; refunds are recorded; bad signatures are refused', async ({ anon, api, auth }) => {
       const { ready } = await gateway(api);
       test.skip(!ready, NO_GATEWAY);
