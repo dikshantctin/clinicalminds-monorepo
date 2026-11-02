@@ -1,5 +1,6 @@
 import { test, expect, requireApi } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { E2E_CLINIC, deleteClinic } from '../src/clinics';
 
 const ALLOW_LISTED_PHONE = '+919876543211'; // VERIFICATION_TEST_PHONES: onboarding skips phone.email
 
@@ -16,13 +17,20 @@ const onboarding = (name: string, slug: string) => ({
 
 test.describe('onboarding two clinics with the same name', () => {
   requireApi();
+  const created: string[] = [];
+  test.afterAll(async () => {
+    for (const email of created) await deleteClinic(email);
+  });
 
   test('both are created as separate tenants', async ({ anon }) => {
-    const name = `Same Name ${uniq('clinic')}`;
-    const first = await anon.post('/api/v1/onboarding/complete', { data: onboarding(name, uniq('a').toLowerCase()) });
+    const name = `${E2E_CLINIC} Same Name ${uniq('clinic')}`;
+    const [slugA, slugB] = [uniq('a').toLowerCase(), uniq('b').toLowerCase()];
+    const first = await anon.post('/api/v1/onboarding/complete', { data: onboarding(name, slugA) });
     expect(first.status(), await first.text()).toBe(200);
-    const second = await anon.post('/api/v1/onboarding/complete', { data: onboarding(name, uniq('b').toLowerCase()) });
+    created.push(`admin.${slugA}@example.com`);
+    const second = await anon.post('/api/v1/onboarding/complete', { data: onboarding(name, slugB) });
     expect(second.status(), await second.text()).toBe(200);
+    created.push(`admin.${slugB}@example.com`);
     const [a, b] = [(await first.json()).tenant_id, (await second.json()).tenant_id];
     expect(a).not.toBe(b);
     expect((await second.json()).organization_name).toBe(name);
@@ -30,8 +38,9 @@ test.describe('onboarding two clinics with the same name', () => {
 
   test('the same admin email is still refused (400)', async ({ anon }) => {
     const slug = uniq('dup').toLowerCase();
-    expect((await anon.post('/api/v1/onboarding/complete', { data: onboarding(`Clinic ${slug}`, slug) })).status()).toBe(200);
-    const again = await anon.post('/api/v1/onboarding/complete', { data: onboarding(`Clinic ${slug}`, slug) });
+    expect((await anon.post('/api/v1/onboarding/complete', { data: onboarding(`${E2E_CLINIC} ${slug}`, slug) })).status()).toBe(200);
+    created.push(`admin.${slug}@example.com`);
+    const again = await anon.post('/api/v1/onboarding/complete', { data: onboarding(`${E2E_CLINIC} ${slug}`, slug) });
     expect(again.status()).toBe(400);
     expect((await again.json()).message.errors.join(' ')).toMatch(/already exists/);
   });
