@@ -196,7 +196,9 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
   test('the dashboard grid puts a session in its clinic-time slot', async ({ page, api }) => {
     const hourIst = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
     test.skip(hourIst + 1 > 19, 'the dashboard grid shows today until 20:00 clinic time; no future slot left today');
-    const hh = String(hourIst + 1).padStart(2, '0');
+    // The grid starts at 08:00 (APP_CONFIG.CALENDAR_START_HOUR): before 07:00 IST the next hour has no slot,
+    // so book the first slot of the day instead (still in the future). CI runs at night IST.
+    const hh = String(Math.max(hourIst + 1, 8)).padStart(2, '0');
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('GridUI'), last_name: 'Patient' } })).json();
     try {
       const res = await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: `${istDate(new Date())}T${hh}:00:00+05:30` } });
