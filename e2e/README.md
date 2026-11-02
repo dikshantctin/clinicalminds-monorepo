@@ -132,6 +132,9 @@ gateway (through `PUT /payments/config`) and signs its own deliveries with it; n
 secret take a cross-file lock (`src/lock.ts`, `acquireLock('webhook-secret')`) so they never run side by side. `E2E_RAZORPAY_*` is optional and only drives the extra "validate a fresh
 pair" write test.
 
+In CI, `e2e.yml` connects the demo clinic from the monorepo secrets `E2E_RAZORPAY_KEY_ID` / `E2E_RAZORPAY_KEY_SECRET`
+(Razorpay TEST mode) and passes the same pair to Playwright, so these specs run there.
+
 The actual payment cannot be automated (Razorpay Checkout is a vendor iframe), so to prove a real Rs 1 charge:
 
 1. Give a service price `1`, open `/book/<firm_code>` (or `npx playwright test web/payments.spec.ts --headed`,
