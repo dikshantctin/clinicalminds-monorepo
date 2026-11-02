@@ -1,5 +1,6 @@
 import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
+import { acquireLock, releaseLock } from '../src/lock';
 import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
 
 const created: string[] = [];
@@ -60,6 +61,52 @@ test.describe('Settings → Payments (clinic admin)', () => {
     await expect(page.getByTestId('payments-status')).toContainText('Connected', { timeout: 20_000 });
     await expect(page.getByTestId('payments-key-secret')).toHaveValue('');
     expect(await page.content()).not.toContain(RAZORPAY.keySecret);
+  });
+});
+
+test.describe.serial('Settings → Payments: remove the stored webhook secret', () => {
+  requireWeb();
+  requireApi();
+  requireAuth();
+  // api/payments.spec.ts writes the same single webhook secret; never run beside it
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    await acquireLock('webhook-secret');
+  });
+  test.afterAll(() => releaseLock('webhook-secret'));
+
+  const putWebhook = async (api: any, webhook_secret: string) => {
+    const { key_id } = await (await api.get('/api/v1/payments/config')).json();
+    const res = await api.put('/api/v1/payments/config', { data: { key_id, enabled: true, webhook_secret } });
+    expect(res.status(), await res.text()).toBe(200);
+    return res.json();
+  };
+
+  test('Remove webhook secret clears it: the page and GET /payments/config show none stored', async ({ page, api }) => {
+    test.skip(!(await gatewayReady(api)), NO_GATEWAY);
+    expect((await putWebhook(api, 'e2e-webhook-secret-web1')).webhook_configured).toBe(true);
+    try {
+      await page.goto('/dashboard/settings');
+      await page.getByRole('tab', { name: 'Payments' }).click();
+      await expect(page.getByTestId('payments-webhook-url')).toContainText('secret stored');
+      await page.getByTestId('payments-webhook-remove').click();
+      await expect(page.getByTestId('payments-webhook-url')).toContainText('no secret stored');
+      await expect(page.getByTestId('payments-webhook-remove')).toHaveCount(0);
+      const cfg = await (await api.get('/api/v1/payments/config')).json();
+      expect(cfg.webhook_configured).toBe(false);
+      expect(cfg.configured).toBe(true); // the key pair is kept
+    } finally {
+      await putWebhook(api, '');
+    }
+  });
+
+  test('no Remove control when no webhook secret is stored', async ({ page, api }) => {
+    test.skip(!(await gatewayReady(api)), NO_GATEWAY);
+    expect((await putWebhook(api, '')).webhook_configured).toBe(false);
+    await page.goto('/dashboard/settings');
+    await page.getByRole('tab', { name: 'Payments' }).click();
+    await expect(page.getByTestId('payments-webhook-url')).toContainText('no secret stored');
+    await expect(page.getByTestId('payments-webhook-remove')).toHaveCount(0);
   });
 });
 
