@@ -1,5 +1,5 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { uniq } from '../src/env';
+import { uniq, DEMO_THERAPIST } from '../src/env';
 
 test.describe('/api/v1/teams', () => {
   requireApi();
@@ -57,5 +57,35 @@ test.describe('/api/v1/teams', () => {
     expect((await api.delete(`/api/v1/teams/teams/${team.id}`)).status()).toBe(200);
     expect(await listed({})).not.toContain(team.id);
     expect(await listed({ is_active: 'false' })).toContain(team.id);
+  });
+
+  test('a removed member can be added back: 200, listed once, with the new role', async ({ api }) => {
+    const team = await (await api.post('/api/v1/teams/teams', {
+      data: { name: uniq('Rejoin'), description: 'e2e', team_type: 'CLINICAL', color: '#3B82F6', max_members: 10 },
+    })).json();
+    try {
+      const staff = (await (await api.get('/api/v1/teams/users')).json()) as { id: string; email: string }[] | { users: { id: string; email: string }[] };
+      const therapistId = (Array.isArray(staff) ? staff : staff.users).find((u) => u.email === DEMO_THERAPIST.email)?.id;
+      expect(therapistId, 'demo therapist is clinic staff').toBeTruthy();
+      const members = async () =>
+        ((await (await api.get(`/api/v1/teams/teams/${team.id}`)).json()).members as { user_id: string; role: string }[])
+          .filter((m) => m.user_id === therapistId);
+
+      const add = await api.post(`/api/v1/teams/teams/${team.id}/members`, { data: { user_id: therapistId, role: 'MEMBER' } });
+      expect(add.status(), await add.text()).toBe(200);
+      const removed = await api.delete(`/api/v1/teams/teams/${team.id}/members/${therapistId}`);
+      expect(removed.status(), await removed.text()).toBe(200);
+      expect(await members()).toEqual([]);
+
+      const again = await api.post(`/api/v1/teams/teams/${team.id}/members`, { data: { user_id: therapistId, role: 'OBSERVER' } });
+      expect(again.status(), await again.text()).toBe(200);
+      expect((await members()).map((m) => m.role)).toEqual(['OBSERVER']);
+
+      const twice = await api.post(`/api/v1/teams/teams/${team.id}/members`, { data: { user_id: therapistId, role: 'MEMBER' } });
+      expect(twice.status(), await twice.text()).toBe(400);
+      expect((await twice.json()).message).toBe('User is already a team member');
+    } finally {
+      await api.delete(`/api/v1/teams/teams/${team.id}`);
+    }
   });
 });
