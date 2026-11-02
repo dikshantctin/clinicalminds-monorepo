@@ -1,6 +1,7 @@
 import { test, expect, expectNoCrash, requireWeb, requireAuth } from '../src/fixtures';
 import { LoginPage } from '../src/pages/login.page';
 import { uniq, DEMO_THERAPIST } from '../src/env';
+import { AA_TEXT, contrastWithWhite } from '../src/contrast';
 
 const SETTINGS = '/dashboard/settings';
 const ALL_FEATURES = ['analytics', 'patient_management', 'session_management'];
@@ -72,11 +73,17 @@ test.describe('settings page (admin)', () => {
     test.skip(!branding.primary_color, 'clinic has no saved brand colour');
     const hex: string = branding.primary_color.replace('#', '');
     const rgb = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(' ');
+    const brand = () => page.evaluate(() => document.documentElement.style.getPropertyValue('--cm-brand').trim());
 
     await page.goto('/dashboard');
-    await expect
-      .poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--cm-brand').trim()))
-      .toBe(rgb);
+    if (contrastWithWhite(branding.primary_color) >= AA_TEXT) {
+      await expect.poll(brand).toBe(rgb);
+    } else {
+      // Too pale for white button text: the shell darkens it until it is readable
+      await expect.poll(brand).not.toBe('');
+      expect(await brand()).not.toBe(rgb);
+      expect(contrastWithWhite(await brand())).toBeGreaterThanOrEqual(AA_TEXT);
+    }
     if (branding.organization_name) {
       await expect(page.getByTestId('shell-clinic-name')).toHaveText(branding.organization_name);
     }
