@@ -76,6 +76,8 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        patient.demo@democlinic.com login), patient-portal (invite → set password → portal
                        login; the login audience picks staff vs PATIENT; an invite never overwrites a password),
                        patients, sessions (offsets, paging, filters, edit),
+                       session-notes-access (a portal patient never gets clinician notes; a clinician
+                       cannot change a colleague's session; unknown session ids → 404),
                        schedules (daily schedule in the clinic time zone),
                        kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
@@ -89,6 +91,9 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        sweep, desk payments → revenue, clinician scope (logs in as the seeded psychologist, skips if
                        that login is blocked); sessions covers cancel/no-show guards and the clinician risk flag → queue,
                        followups (missed session → card, idempotent sync, closed cards stay closed), deid
+                       catalog (services/locations: 422 for blank name, duration <= 0, negative or 3-decimal price;
+                       THERAPIST 403 on writes; search + skip/limit totals; deactivated → gone from public booking;
+                       structured location address round-trips)
 web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
@@ -99,9 +104,13 @@ web/                   auth, guards, navigation, patients, sessions, tasks-teams
                        journey (serial, browser-only clinic day: admin publishes a service, registers a patient,
                        schedules a session → patient books online → therapist starts it → missed session shows on
                        the Follow-up queue; the one API shortcut moves a session into the past)
+                       catalog (/admin/services, /admin/locations: sidebar links, add with validation, search, edit,
+                       deactivate and delete with confirmation, status filter, server paging)
 ```
 
-Specs create their own data with unique names (`uniq()`) and clean up in `finally` blocks.
+Specs create their own data with unique names (`uniq()`) and clean up in `finally` blocks. Catalog services
+are created through `src/catalog.ts` `createService` and deleted by `cleanupServices` in an `afterEach`;
+`backend/scripts/deactivate_e2e_services.py` retires what older runs left behind.
 
 ## Payments (Razorpay test mode)
 
@@ -143,7 +152,6 @@ runs for real. Live status on 2026-10-28: 101 passed, 9 fixme, 5 skipped (de-id 
 |---|---|
 | `api/auth.spec.ts` register | `auth.register` returns placeholder ids, never writes to DB (real signup is `/onboarding/complete`) |
 | `api/otp-onboarding.spec.ts` generate | needs SMTP credentials |
-| `api/tenants.spec.ts` usage/billing | `TenantUsage` model has no `tenant_id` column |
 
 Two Playwright processes must not share `test-results/` (you get `ENOENT … trace` errors, not real
 failures). For a second concurrent run set `PW_OUTPUT_DIR=/tmp/pw-out PW_REPORT_DIR=/tmp/pw-report`.

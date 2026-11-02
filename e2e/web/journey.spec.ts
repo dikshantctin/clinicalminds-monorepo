@@ -2,6 +2,7 @@ import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtur
 import { env, uniq } from '../src/env';
 import { LoginPage } from '../src/pages/login.page';
 import { AddPatientPage } from '../src/pages/patients.page';
+import { adminApi, assignDemoClinicians } from '../src/catalog';
 
 /**
  * One clinic, one day, through the browser only (the single API shortcut is time-travelling a
@@ -14,9 +15,9 @@ import { AddPatientPage } from '../src/pages/patients.page';
  */
 test.describe.configure({ mode: 'serial' });
 
-// The journey is the only spec that looks a session up by PATIENT NAME, and the public booking finds-or-creates
-// the patient by phone (newest wins). So it uses the SECOND allow-listed test phone exclusively; every other
-// booking spec shares +919876543210 but keys off the session id, so their cross-attachment is harmless.
+// The journey is the only spec that looks a session up by PATIENT NAME. On the booking page the patient picks
+// themselves from the people the clinic has on their verified number, so the journey uses the SECOND allow-listed
+// test phone exclusively (the shared +919876543210 lists every other spec's patients too).
 const TEST_PHONE = '+919876543211'; // test-listed: the booking page accepts it without the phone.email round-trip
 const THERAPIST = { email: 'therapist.jane@democlinic.com', password: 'Password123!', name: 'Jane Doe' };
 
@@ -50,19 +51,32 @@ test.describe('end-to-end clinic journey', () => {
   requireAuth();
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test('1. admin publishes a service, registers a patient and schedules a session', async ({ page }) => {
+  // the journey's service must not stay bookable in the shared clinic
+  test.afterAll(async () => {
+    const api = await adminApi();
+    const { services } = await (await api.get('/api/v1/catalog/services', { params: { search: serviceName } })).json();
+    for (const s of services ?? []) await api.delete(`/api/v1/catalog/services/${s.id}`);
+    await api.dispose();
+  });
+
+  test('1. admin publishes a service, registers a patient and schedules a session', async ({ page, api }) => {
     await loginAs(page, env.EMAIL, env.PASSWORD);
 
     // service (what patients can book)
     await page.goto('/admin/services');
-    // scoped to the form: index.html has <meta name="description"> too
-    const serviceForm = page.locator('form').filter({ has: page.getByRole('button', { name: 'Add Service' }) });
-    await serviceForm.locator('input[name="name"]').fill(serviceName);
-    await serviceForm.locator('textarea[name="description"]').fill('Journey test service');
-    await serviceForm.locator('input[name="duration_minutes"]').fill('50');
-    await serviceForm.locator('input[name="price"]').fill('0'); // free intro: the online booking below must not hit the pay step
-    await page.getByRole('button', { name: 'Add Service' }).click();
-    await expect(page.getByRole('cell', { name: serviceName })).toBeVisible();
+    await page.getByTestId('service-add').click();
+    const serviceForm = page.getByTestId('service-form-dialog');
+    await serviceForm.getByTestId('service-form-name').fill(serviceName);
+    await serviceForm.getByTestId('service-form-description').fill('Journey test service');
+    await serviceForm.getByTestId('service-form-duration').fill('50');
+    await serviceForm.getByTestId('service-form-price').fill('0'); // free intro: the online booking below must not hit the pay step
+    await serviceForm.getByTestId('service-form-save').click();
+    await expect(serviceForm).toBeHidden();
+    await page.getByTestId('service-search').fill(serviceName);
+    await expect(page.getByTestId('services-table').getByRole('row', { name: new RegExp(serviceName) })).toBeVisible();
+    // assign who offers it (booking offers a service only with assigned clinicians); the form has no picker yet
+    const { services } = await (await api.get('/api/v1/catalog/services', { params: { search: serviceName } })).json();
+    await assignDemoClinicians(api, services[0].id);
 
     // patient
     const form = new AddPatientPage(page);
@@ -95,9 +109,11 @@ test.describe('end-to-end clinic journey', () => {
     const slots = page.getByTestId('booking-slots').getByRole('radio');
     await expect(slots.first()).toBeVisible({ timeout: 15_000 });
     await slots.first().click();
-    await page.getByTestId('booking-first-name').fill(run);
-    await page.getByTestId('booking-last-name').fill('Patient');
     await page.getByTestId('booking-phone').fill(TEST_PHONE);
+    await page.getByTestId('booking-phone').blur();
+    // the patient registered in step 1 is listed on this number: they pick themselves instead of retyping a name
+    await page.getByTestId('booking-for').getByRole('radio', { name: patientFullName }).click();
+    await expect(page.getByTestId('booking-first-name')).toHaveCount(0);
     await page.getByTestId('booking-submit').click();
     await expect(page.getByTestId('booking-confirmation')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('booking-confirmation')).toContainText(THERAPIST.name);

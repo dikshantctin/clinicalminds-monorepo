@@ -1,6 +1,7 @@
 import { test, expect, expectNoCrash, requireWeb, requireAuth } from '../src/fixtures';
 import { LoginPage } from '../src/pages/login.page';
 import { uniq, DEMO_THERAPIST } from '../src/env';
+import { AA_TEXT, contrastWithWhite } from '../src/contrast';
 
 const SETTINGS = '/dashboard/settings';
 const ALL_FEATURES = ['analytics', 'patient_management', 'session_management'];
@@ -8,6 +9,7 @@ const ALL_FEATURES = ['analytics', 'patient_management', 'session_management'];
 test.describe('settings page (admin)', () => {
   requireWeb();
   requireAuth();
+  test.describe.configure({ mode: 'serial' }); // the tests share the admin's own profile and the clinic's settings
 
   test('profile save survives a reload', async ({ page, api }) => {
     const before = await (await api.get('/api/v1/users/me')).json();
@@ -29,6 +31,32 @@ test.describe('settings page (admin)', () => {
       await api.put('/api/v1/users/me', {
         data: { license_number: before.license_number ?? '', specializations: before.specializations ?? [] },
       });
+    }
+  });
+
+  test('what you type before the profile has loaded is kept when it arrives, and saved', async ({ page, api }) => {
+    const before = await (await api.get('/api/v1/users/me')).json();
+    const license = uniq('LATE');
+    // hold the profile response until the user has typed (a slow network)
+    let release!: () => void;
+    const typed = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/api/v1/users/me', async (route) => {
+      if (route.request().method() === 'GET') await typed;
+      await route.continue();
+    });
+    try {
+      await page.goto(SETTINGS);
+      await page.getByTestId('profile-license-number').fill(license);
+      release();
+      // the loaded profile fills the fields the user did not touch, and leaves the typed one alone
+      await expect(page.getByTestId('profile-first-name')).toHaveValue(before.first_name);
+      await expect(page.getByTestId('profile-license-number')).toHaveValue(license);
+      await page.getByTestId('profile-save').click();
+      await expect(page.getByText('Profile Updated.')).toBeVisible();
+      expect((await (await api.get('/api/v1/users/me')).json()).license_number).toBe(license);
+    } finally {
+      await page.unroute('**/api/v1/users/me');
+      await api.put('/api/v1/users/me', { data: { license_number: before.license_number ?? '' } });
     }
   });
 
@@ -72,11 +100,17 @@ test.describe('settings page (admin)', () => {
     test.skip(!branding.primary_color, 'clinic has no saved brand colour');
     const hex: string = branding.primary_color.replace('#', '');
     const rgb = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(' ');
+    const brand = () => page.evaluate(() => document.documentElement.style.getPropertyValue('--cm-brand').trim());
 
     await page.goto('/dashboard');
-    await expect
-      .poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--cm-brand').trim()))
-      .toBe(rgb);
+    if (contrastWithWhite(branding.primary_color) >= AA_TEXT) {
+      await expect.poll(brand).toBe(rgb);
+    } else {
+      // Too pale for white button text: the shell darkens it until it is readable
+      await expect.poll(brand).not.toBe('');
+      expect(await brand()).not.toBe(rgb);
+      expect(contrastWithWhite(await brand())).toBeGreaterThanOrEqual(AA_TEXT);
+    }
     if (branding.organization_name) {
       await expect(page.getByTestId('shell-clinic-name')).toHaveText(branding.organization_name);
     }
