@@ -2,6 +2,7 @@ import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, DEMO_THERAPIST } from '../src/env';
 import { inviteTokenFor } from '../src/outbox';
+import { E2E_CLINIC, deleteClinic } from '../src/clinics';
 
 /**
  * One clinic can never reach another's rows: the tenant always comes from the JWT (a spoofed
@@ -12,7 +13,7 @@ import { inviteTokenFor } from '../src/outbox';
 const ALLOW_LISTED_PHONE = '+919876543211'; // VERIFICATION_TEST_PHONES: onboarding skips phone.email
 const PASSWORD = 'Password123!';
 
-interface Foreign { ctx: APIRequestContext; tenantId: string; adminId: string; sessionDay: string; patientName: string }
+interface Foreign { ctx: APIRequestContext; tenantId: string; adminId: string; adminEmail: string; sessionDay: string; patientName: string }
 
 /** A second clinic with one patient and one session, so a leak has something to show. */
 async function onboardForeignClinic(anon: APIRequestContext): Promise<Foreign> {
@@ -20,7 +21,7 @@ async function onboardForeignClinic(anon: APIRequestContext): Promise<Foreign> {
   const res = await anon.post('/api/v1/onboarding/complete', {
     data: {
       organization: {
-        name: `Clinic ${slug}`, type: 'clinic', contact_email: `${slug}@example.com`, contact_phone: ALLOW_LISTED_PHONE,
+        name: `${E2E_CLINIC} ${slug}`, type: 'clinic', contact_email: `${slug}@example.com`, contact_phone: ALLOW_LISTED_PHONE,
         address_line1: '1 Road', city: 'Pune', state: 'MH', postal_code: '411001',
       },
       plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
@@ -45,7 +46,7 @@ async function onboardForeignClinic(anon: APIRequestContext): Promise<Foreign> {
     data: { patient_id: (await patient.json()).id, scheduled_at: `${sessionDay}T10:00:00+05:30`, duration_minutes: 50 },
   });
   expect(session.status(), await session.text()).toBe(200);
-  return { ctx, tenantId: tenant.id, adminId: user.id, sessionDay, patientName: `${first} Patient` };
+  return { ctx, tenantId: tenant.id, adminId: user.id, adminEmail: `admin.${slug}@example.com`, sessionDay, patientName: `${first} Patient` };
 }
 
 test.describe('tenant and token isolation', () => {
@@ -61,6 +62,7 @@ test.describe('tenant and token isolation', () => {
   });
   test.afterAll(async () => {
     await foreign?.ctx.dispose();
+    if (foreign) await deleteClinic(foreign.adminEmail);
   });
 
   test("a spoofed X-Tenant-ID does not show another clinic's schedule", async ({ auth }) => {

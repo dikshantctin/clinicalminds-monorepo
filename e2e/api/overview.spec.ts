@@ -1,5 +1,6 @@
+import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { uniq } from '../src/env';
+import { env, uniq } from '../src/env';
 
 /** GET /analytics/overview — the dashboard's four numbers, counted from real rows (overview_service.py). */
 test.describe('/api/v1/analytics/overview', () => {
@@ -84,9 +85,34 @@ test.describe('/api/v1/analytics/overview', () => {
     }
   });
 
-  test('a payment recorded at the desk counts toward revenue collected this month', async ({ api }) => {
-    const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Cash'), last_name: 'Patient' } })).json();
+  test('a payment recorded at the desk counts toward revenue collected this month', async ({ anon }) => {
+    // A clinic of its own: the demo clinic's revenue changes whenever another worker records a payment, and
+    // recomputing it from the session list missed rows once the list outgrew a page. Here it is exact.
+    const slug = uniq('rev').toLowerCase();
+    const phone = '+919876543211'; // VERIFICATION_TEST_PHONES: onboarding skips phone.email, logins count as verified
+    const onboarded = await anon.post('/api/v1/onboarding/complete', {
+      data: {
+        organization: {
+          name: `Revenue ${slug}`, type: 'clinic', contact_email: `${slug}@example.com`, contact_phone: phone,
+          address_line1: '1 Road', city: 'Pune', state: 'MH', postal_code: '411001',
+        },
+        plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
+        admin: { email: `admin.${slug}@example.com`, password: 'Password123!', first_name: 'Revenue', last_name: 'Admin', phone },
+        admin_role: 'ADMIN',
+        team_members: [],
+      },
+    });
+    expect(onboarded.status(), await onboarded.text()).toBe(200);
+    const login = await anon.post('/api/v1/auth/login', { data: { email: `admin.${slug}@example.com`, password: 'Password123!' } });
+    expect(login.status(), await login.text()).toBe(200);
+    const api = await pwRequest.newContext({
+      baseURL: env.API_URL,
+      extraHTTPHeaders: { Authorization: `Bearer ${(await login.json()).access_token}` },
+    });
     try {
+      expect((await (await api.get('/api/v1/analytics/overview')).json()).revenue_collected_paise).toBe(0);
+
+      const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Cash'), last_name: 'Patient' } })).json();
       const session = await (
         await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString() } })
       ).json();
@@ -105,35 +131,20 @@ test.describe('/api/v1/analytics/overview', () => {
       const detail = await (await api.get(`/api/v1/sessions/${session.id}`)).json();
       expect(detail).toEqual(expect.objectContaining({ payment_status: 'paid', amount_paise: 50000 }));
 
-      // revenue this month == the sum of this month's paid rows across the clinic's sessions (parallel-safe:
-      // computed from the same rows, not from a before/after delta)
-      const overview = await (await api.get('/api/v1/analytics/overview')).json();
-      const monthStart = new Date(overview.month_start).getTime();
-      const all = await (await api.get('/api/v1/sessions/', { params: { limit: 10000 } })).json();
-      let expected = 0;
-      for (const s of all.sessions) {
-        if (!s.payment_status || s.payment_status === 'pending' || s.payment_status === 'expired') continue;
-        const rows = await (await api.get(`/api/v1/sessions/${s.id}/payments`)).json();
-        for (const p of rows) {
-          if ((p.status === 'paid' || p.status === 'refunded') && p.paid_at && new Date(p.paid_at).getTime() >= monthStart) expected += p.amount_paise;
-          if (p.refunded_at && new Date(p.refunded_at).getTime() >= monthStart) expected -= p.refunded_paise;
-        }
-      }
-      expect(overview.revenue_collected_paise).toBeGreaterThanOrEqual(50000);
-      // other workers may record payments between the two reads, so allow their deltas but never less
-      expect(expected).toBeGreaterThanOrEqual(overview.revenue_collected_paise);
+      // the clinic's only payment this month is this one
+      expect((await (await api.get('/api/v1/analytics/overview')).json()).revenue_collected_paise).toBe(50000);
     } finally {
-      await api.delete(`/api/v1/patients/${patient.id}`);
+      await api.dispose();
     }
   });
 
   test('a clinician sees only their own week, and no revenue', async ({ anon, api }) => {
     const login = await anon.post('/api/v1/auth/login', { data: { email: 'dr.smith@democlinic.com', password: 'Password123!' } });
-    test.skip(login.status() !== 200, `demo psychologist cannot log in (${login.status()}) — seed with scripts/setup_demo_data.py`);
+    expect(login.status(), `demo psychologist login (seeded by backend/scripts/setup_demo_data.py): ${await login.text()}`).toBe(200);
     const body = await login.json();
     const headers = { Authorization: `Bearer ${body.access_token}`, 'X-Tenant-ID': body.tenant.id };
     const res = await anon.get('/api/v1/analytics/overview', { headers });
-    test.skip(res.status() === 403, 'demo psychologist is blocked by the verification gate (not on VERIFICATION_TEST_EMAILS)');
+    // a 403 here means the verification gate blocks the demo psychologist (add it to VERIFICATION_TEST_EMAILS)
     expect(res.status(), await res.text()).toBe(200);
     const mine = await res.json();
     expect(mine.scope).toBe('mine');

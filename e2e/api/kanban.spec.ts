@@ -61,6 +61,26 @@ test.describe('/api/v1/kanban', () => {
     }
   });
 
+  test('moving a task out of Done clears completed_at; a bad status is 422', async ({ api }) => {
+    const board = await (await api.post('/api/v1/kanban/boards', { data: { name: uniq('Done Board') } })).json();
+    try {
+      const task = await (await api.post('/api/v1/kanban/tasks', { data: { board_id: board.id, title: uniq('Task'), status: 'todo' } })).json();
+      const move = (status: string) => api.post(`/api/v1/kanban/tasks/${task.id}/move`, { data: { status, position: 0 } });
+
+      const done = await move('done');
+      expect(done.status(), await done.text()).toBe(200);
+      expect((await done.json()).completed_at).toEqual(expect.any(String));
+
+      const reopened = await move('todo');
+      expect(reopened.status(), await reopened.text()).toBe(200);
+      expect(await reopened.json()).toEqual(expect.objectContaining({ status: 'todo', completed_at: null }));
+
+      expect((await move('nope')).status()).toBe(422);
+    } finally {
+      await api.delete(`/api/v1/kanban/boards/${board.id}`);
+    }
+  });
+
   test('notifications endpoints respond', async ({ api }) => {
     const list = await api.get('/api/v1/kanban/notifications');
     expect(list.status()).toBe(200);

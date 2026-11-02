@@ -1,6 +1,7 @@
 import { createHmac } from 'crypto';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
+import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
 
 /**
  * Per-clinic payments: each clinic connects its OWN Razorpay account (Settings → Payments); patients who
@@ -17,10 +18,12 @@ const DEMO_THERAPIST = { email: 'therapist.jane@democlinic.com', password: 'Pass
 const haveSecret = Boolean(RAZORPAY.keyId && RAZORPAY.keySecret);
 const NO_GATEWAY = 'the demo clinic has no Razorpay account connected — connect one in Settings → Payments (or run backend/scripts/connect_demo_razorpay.py)';
 
-// a dedicated day so these bookings never contend with booking.spec / journey (day+2) or web payments (day+4)
-const bookingDate = () => {
+// One day per booking test, so these never contend with each other, booking.spec / journey (day+2),
+// web payments (day+4) or booking.spec's concurrency test (day+7).
+const DAY = { pending: 3, free: 5, webhook: 6 } as const;
+const bookingDate = (daysAhead: number) => {
   const d = new Date();
-  d.setDate(d.getDate() + 3);
+  d.setDate(d.getDate() + daysAhead);
   return d.toISOString().slice(0, 10);
 };
 
@@ -30,17 +33,17 @@ async function gateway(api: any): Promise<{ ready: boolean; keyId: string | null
   return { ready: Boolean(cfg.platform_enabled && cfg.configured && cfg.enabled), keyId: cfg.key_id ?? null, platformEnabled: Boolean(cfg.platform_enabled) };
 }
 
+const created: string[] = [];
 async function service(api: any, price: number) {
-  const res = await api.post('/api/v1/catalog/services', {
-    data: { name: uniq(price ? 'Paid consult' : 'Free intro'), description: 'e2e', duration_minutes: 50, price, currency: 'INR' },
-  });
-  expect(res.status(), await res.text()).toBe(201);
-  return res.json();
+  const s = await createService(api, created, { name: uniq(price ? 'Paid consult' : 'Free intro'), price });
+  await assignDemoClinicians(api, s.id);
+  return s;
 }
 
-// Walk the day's free slots from the end, retrying on 409 (another parallel spec may grab the same one).
-async function bookASlot(anon: any, firmCode: string, serviceId: string) {
-  const date = bookingDate();
+// Walk the day's free slots from the end; a 409 means a parallel copy of the same test (--repeat-each,
+// or another run on a shared database) took that slot first, so try the next one.
+async function bookASlot(anon: any, firmCode: string, serviceId: string, daysAhead: number) {
+  const date = bookingDate(daysAhead);
   const info = await (await anon.get(`/api/v1/public/booking/${firmCode}`)).json();
   const practitioner = info.practitioners[0];
   const { slots } = await (
@@ -49,9 +52,9 @@ async function bookASlot(anon: any, firmCode: string, serviceId: string) {
   expect(slots.length, 'free slots to book').toBeGreaterThan(0);
   for (const slot of [...slots].reverse()) {
     const res = await anon.post(`/api/v1/public/booking/${firmCode}`, {
-      data: { service_id: serviceId, practitioner_id: practitioner.id, scheduled_at: slot, patient: { first_name: uniq('Pay'), last_name: 'Patient', phone: TEST_PHONE } },
+      data: { service_id: serviceId, practitioner_id: practitioner.id, scheduled_at: slot, patient: { first_name: uniq('Pay'), last_name: 'Patient', phone: TEST_PHONE }, new_patient: true },
     });
-    if (res.status() === 409) continue; // slot taken by a parallel spec — try the next one
+    if (res.status() === 409) continue;
     expect(res.status(), await res.text()).toBe(200);
     return { conf: await res.json(), slot, practitioner, date };
   }
@@ -105,6 +108,7 @@ test.describe('/api/v1/payments/config — the clinic\'s own Razorpay account', 
 test.describe('public booking paid into the clinic\'s Razorpay account', () => {
   requireApi();
   requireAuth();
+  test.afterEach(async ({ api }) => cleanupServices(api, created));
 
   test('a Rs 1 service creates an order on the clinic\'s account, holds the slot and shows as pending; forged signatures are refused', async ({ anon, api, auth }) => {
     const { ready, keyId } = await gateway(api);
@@ -112,7 +116,7 @@ test.describe('public booking paid into the clinic\'s Razorpay account', () => {
     const svc = await service(api, 1);
     const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
     expect(info.payments_enabled).toBe(true);
-    const { conf, slot, practitioner, date } = await bookASlot(anon, auth.firmCode, svc.id);
+    const { conf, slot, practitioner, date } = await bookASlot(anon, auth.firmCode, svc.id, DAY.pending);
     try {
       expect(conf.payment_status).toBe('pending');
       expect(conf.payment).toEqual(expect.objectContaining({ amount_paise: 100, currency: 'INR', key_id: keyId }));
@@ -125,8 +129,9 @@ test.describe('public booking paid into the clinic\'s Razorpay account', () => {
       ).json();
       expect(after.slots).not.toContain(slot);
 
-      // the clinic sees the payment state on the session
-      const clinic = await (await api.get('/api/v1/sessions/', { params: { limit: 500 } })).json();
+      // the clinic sees the payment state on the session (the list is newest-first: scope it to this patient and
+      // day, or sessions other runs left on later days push this one past any page size)
+      const clinic = await (await api.get('/api/v1/sessions/', { params: { patient_id: conf.patient_id, date_from: date, date_to: date } })).json();
       const row = clinic.sessions.find((s: { id: string }) => s.id === conf.session_id);
       expect(row).toEqual(expect.objectContaining({ booked_via: 'web', payment_status: 'pending', amount_paise: 100 }));
       const detail = await (await api.get(`/api/v1/sessions/${conf.session_id}`)).json();
@@ -153,7 +158,7 @@ test.describe('public booking paid into the clinic\'s Razorpay account', () => {
     const { ready } = await gateway(api);
     test.skip(!ready, NO_GATEWAY);
     const svc = await service(api, 0);
-    const { conf } = await bookASlot(anon, auth.firmCode, svc.id);
+    const { conf } = await bookASlot(anon, auth.firmCode, svc.id, DAY.free);
     try {
       expect(conf.payment).toBeNull();
       expect(conf.payment_status).toBeNull();
@@ -175,7 +180,7 @@ test.describe('public booking paid into the clinic\'s Razorpay account', () => {
     expect(JSON.stringify(await saved.json())).not.toContain(WEBHOOK_SECRET);
 
     const svc = await service(api, 1);
-    const { conf } = await bookASlot(anon, auth.firmCode, svc.id);
+    const { conf } = await bookASlot(anon, auth.firmCode, svc.id, DAY.webhook);
     const url = `/api/v1/public/booking/${auth.firmCode}/payments/webhook`;
     const sign = (body: string, secret = WEBHOOK_SECRET) => createHmac('sha256', secret).update(body).digest('hex');
     const paymentId = uniq('pay_e2e'); // real Razorpay payment ids are unique; so are ours across runs
@@ -213,6 +218,54 @@ test.describe('public booking paid into the clinic\'s Razorpay account', () => {
       // unknown events are acknowledged, unknown orders ignored
       const other = JSON.stringify({ event: 'order.paid', payload: {} });
       expect(await (await anon.post(url, { data: other, headers: { 'content-type': 'application/json', 'x-razorpay-signature': sign(other) } })).json()).toEqual({ ignored: true, event: 'order.paid' });
+    } finally {
+      await api.post(`/api/v1/sessions/${conf.session_id}/cancel`, { data: { reason: 'e2e cleanup' } });
+    }
+  });
+
+  test('paying at the desk settles the open online order; a late online capture is not counted twice', async ({ anon, api, auth }) => {
+    const { ready } = await gateway(api);
+    test.skip(!ready, NO_GATEWAY);
+    const cfg = await (await api.get('/api/v1/payments/config')).json();
+    const WEBHOOK_SECRET = 'e2e-webhook-secret-0001'; // the same secret the webhook spec stores
+    const saved = await api.put('/api/v1/payments/config', { data: { key_id: cfg.key_id, enabled: true, webhook_secret: WEBHOOK_SECRET } });
+    expect(saved.status(), await saved.text()).toBe(200);
+
+    const svc = await service(api, 1);
+    const { conf } = await bookASlot(anon, auth.firmCode, svc.id);
+    expect(conf.payment_status).toBe('pending');
+    try {
+      // the patient walks in and pays cash while the online order is still open
+      const desk = await api.post(`/api/v1/sessions/${conf.session_id}/payments`, { data: { amount_paise: 100, method: 'cash' } });
+      expect(desk.status(), await desk.text()).toBe(200);
+      let rows = await (await api.get(`/api/v1/sessions/${conf.session_id}/payments`)).json();
+      expect(rows.map((p: { provider: string; status: string }) => `${p.provider}:${p.status}`).sort()).toEqual(['manual:paid', 'razorpay:expired']);
+      let detail = await (await api.get(`/api/v1/sessions/${conf.session_id}`)).json();
+      expect(detail).toEqual(expect.objectContaining({ status: 'scheduled', payment_status: 'paid' }));
+
+      // the patient had also paid online: the capture is recorded on the order but not as a second paid row
+      const url = `/api/v1/public/booking/${auth.firmCode}/payments/webhook`;
+      const sign = (body: string) => createHmac('sha256', WEBHOOK_SECRET).update(body).digest('hex');
+      const paymentId = uniq('pay_e2e_dup');
+      const captured = JSON.stringify({
+        event: 'payment.captured',
+        payload: { payment: { entity: { id: paymentId, order_id: conf.payment.order_id, amount: 100, currency: 'INR' } } },
+      });
+      const headers = { 'content-type': 'application/json', 'x-razorpay-signature': sign(captured) };
+      const late = await anon.post(url, { data: captured, headers });
+      expect(late.status(), await late.text()).toBe(200);
+      expect(await late.json()).toEqual({ status: 'duplicate', changed: true });
+      const again = await anon.post(url, { data: captured, headers });
+      expect(await again.json()).toEqual({ status: 'duplicate', changed: false });
+
+      rows = await (await api.get(`/api/v1/sessions/${conf.session_id}/payments`)).json();
+      expect(rows.filter((p: { status: string }) => p.status === 'paid')).toEqual([expect.objectContaining({ provider: 'manual', amount_paise: 100 })]);
+      detail = await (await api.get(`/api/v1/sessions/${conf.session_id}`)).json();
+      expect(detail).toEqual(expect.objectContaining({ status: 'scheduled', payment_status: 'paid' }));
+      expect(detail.session_notes).toContain('already paid at the desk');
+
+      // a second desk payment is still refused
+      expect((await api.post(`/api/v1/sessions/${conf.session_id}/payments`, { data: { amount_paise: 100, method: 'cash' } })).status()).toBe(409);
     } finally {
       await api.post(`/api/v1/sessions/${conf.session_id}/cancel`, { data: { reason: 'e2e cleanup' } });
     }

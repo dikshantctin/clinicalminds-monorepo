@@ -10,7 +10,7 @@ area you are changing, it holds the verified details (routes, models, defects, t
 
 | Path | Repo | What | Docs |
 |---|---|---|---|
-| `backend/` | `dikshantctin/clinicalminds-backend` | FastAPI + PostgreSQL (database-per-tenant), JWT auth, self-booking + per-clinic payments, follow-up queue | `backend/CLAUDE.md` |
+| `backend/` | `dikshantctin/clinicalminds-backend` | FastAPI + PostgreSQL (platform DB + shared tenant DB), JWT auth, self-booking + per-clinic payments, follow-up queue | `backend/CLAUDE.md` |
 | `frontend/` | `dikshantctin/clinicalminds-frontend` | React 18 / TypeScript / Vite / Tailwind | `frontend/CLAUDE.md` |
 | `deidentification-service/` | `dikshantctin/clinicalminds-deidentification` | HIPAA PHI de-identification microservice (:8002) | `deidentification-service/CLAUDE.md` |
 | `e2e/` | (this repo) | Playwright suite for backend API, frontend UI and de-id service | `e2e/README.md` |
@@ -72,7 +72,8 @@ Two database layers coexist (see `backend/CLAUDE.md` → Architecture for the ve
 `clinical_mind_platform` managed by `MultiTenantDatabaseManager`; **all tenant data** (patients,
 sessions, kanban, teams, schedules, tenants, catalog, analytics) lives in the `DATABASE_URL` database
 through the older `DatabaseManager` (schema-per-tenant via `search_path`, rows scoped by `tenant_id`).
-The per-tenant `clinical_mind_tenant_*` databases are created at onboarding but nothing reads them yet.
+There is no database per clinic: onboarding stopped creating `clinical_mind_tenant_*` databases (nothing read
+them); `backend/scripts/drop_unused_tenant_databases.py` lists the old ones and `--apply` drops them.
 Onboarding writes users to both layers with the same user id.
 
 **Key points:**
@@ -90,7 +91,7 @@ Onboarding writes users to both layers with the same user id.
 app/
 ├── api/v1/              # Routers: auth, otp, onboarding, verification, public_booking, patients, sessions,
 │                        #   schedules, analytics (GET overview only), tenants, catalog, teams, kanban, payments
-├── core/multi_database_manager.py  # database-per-tenant
+├── core/multi_database_manager.py  # platform (identity) database
 ├── models/              # platform.py (platform DB), database.py (legacy + tenant), kanban/team/appointment/audit models
 ├── schemas/             # Pydantic models (kanban, team, tenant, onboarding, permissions, appointment)
 ├── services/            # Business logic
@@ -224,7 +225,7 @@ There is CI only, no deployment pipeline. Four GitHub Actions workflows:
 | monorepo | `.github/workflows/audit.yml` | weekly (Mon 02:30 IST), manual — not a PR gate | `pip-audit` on `backend/requirements-dev.txt`, `npm audit --audit-level=high` on `frontend` and `e2e`; red while known vulnerabilities remain, report in the run summary |
 | `backend` | `.github/workflows/ci.yml` | push to `main`, PR | Postgres service → `create_all` via `import main` → `make check` (ruff, mypy, pytest) |
 | `frontend` | `.github/workflows/ci.yml` | push to `main`, PR | `npm ci` → `make check` (lint, build — `build` runs `tsc`) |
-| monorepo | `.github/workflows/e2e.yml` | PR, push to `main` (both skip Markdown-only changes), manual; nightly 02:00 IST with backend/frontend at their latest `main` (manual: `submodule_heads`) | checkout with submodules → Postgres → backend on :8000 (`create_all`, `alembic stamp head`) → `setup_demo_data.py` + `demo_data.py import` → `connect_demo_razorpay.py` (Razorpay TEST keys from secrets) → `vite build` + `vite preview` on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
+| monorepo | `.github/workflows/e2e.yml` | PR, push to `main` (both skip Markdown-only changes), manual; nightly 02:00 IST with backend/frontend at their latest `main` (manual: `submodule_heads`) | checkout with submodules → Postgres + Redis (rate-limit counters) → backend on :8000 (`create_all`, `alembic stamp head`) → `setup_demo_data.py` + `demo_data.py import` → `connect_demo_razorpay.py` (Razorpay TEST keys from secrets) → `vite build` + `vite preview` on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
 
 Merge order for a change spanning repos: backend PR (green) → frontend PR (green) → monorepo PR that bumps the
 submodule pointers (its e2e runs against exactly those commits). A pointer must name a commit on the submodule's

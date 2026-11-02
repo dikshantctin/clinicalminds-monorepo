@@ -1,6 +1,7 @@
 import { request } from '@playwright/test';
 import { test, expect, requireApi } from '../src/fixtures';
 import { env, uniq } from '../src/env';
+import { E2E_CLINIC, deleteClinic } from '../src/clinics';
 
 // CORS = backend PLATFORM_ORIGIN (expected to equal WEB_URL) + every trial/active tenant's
 // frontend_origin from the platform DB, reloaded every 30s without a restart.
@@ -14,7 +15,7 @@ const preflight = (ctx: import('@playwright/test').APIRequestContext, origin: st
 
 const onboarding = (slug: string, frontend_origin: string) => ({
   organization: {
-    name: `Clinic ${slug}`, type: 'clinic', contact_email: `${slug}@example.com`, contact_phone: ALLOW_LISTED_PHONE,
+    name: `${E2E_CLINIC} ${slug}`, type: 'clinic', contact_email: `${slug}@example.com`, contact_phone: ALLOW_LISTED_PHONE,
     address_line1: '1 Road', city: 'Pune', state: 'MH', postal_code: '411001', frontend_origin,
   },
   plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
@@ -25,6 +26,10 @@ const onboarding = (slug: string, frontend_origin: string) => ({
 
 test.describe('CORS origins from the platform DB', () => {
   requireApi();
+  const created: string[] = [];
+  test.afterAll(async () => {
+    for (const email of created.splice(0)) await deleteClinic(email); // afterAll runs per test (fullyParallel)
+  });
 
   test('the shared app origin is allowed', async ({ anon }) => {
     const res = await preflight(anon, env.WEB_URL);
@@ -48,6 +53,7 @@ test.describe('CORS origins from the platform DB', () => {
 
     const res = await anon.post('/api/v1/onboarding/complete', { data: onboarding(slug, origin) });
     expect(res.status(), await res.text()).toBe(200);
+    created.push(`admin.${slug}@example.com`);
     const tenantId: string = (await res.json()).tenant_id;
 
     await expect

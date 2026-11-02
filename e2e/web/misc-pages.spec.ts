@@ -18,12 +18,15 @@ test.describe('settings and admin pages', () => {
     }
   });
 
-  test('branding colour saves and survives a reload', async ({ page }) => {
+  test('branding colour saves and survives a reload', async ({ page, api, auth }) => {
     test.slow(); // several full page loads on the dev server
+    // The stored value, not the input's: an unset colour shows the default, and saving that back would
+    // store it (a pale default once stuck on the demo clinic this way)
+    const branding = `/api/v1/tenants/${auth.tenantId}/branding`;
+    const original: string | null = (await (await api.get(branding)).json()).primary_color ?? null;
     await page.goto('/dashboard/settings');
     await page.getByRole('tab', { name: /Branding/ }).click();
     const colour = page.getByTestId('branding-primary-color');
-    const original = await colour.inputValue();
     try {
       await colour.fill('#336699');
       await page.getByTestId('branding-save').click();
@@ -32,9 +35,7 @@ test.describe('settings and admin pages', () => {
       await page.getByRole('tab', { name: /Branding/ }).click();
       await expect(page.getByTestId('branding-primary-color')).toHaveValue('#336699');
     } finally {
-      await page.getByTestId('branding-primary-color').fill(original);
-      await page.getByTestId('branding-save').click();
-      await expect(page.getByText('Branding Updated')).toBeVisible();
+      expect((await api.put(branding, { data: { primary_color: original } })).status()).toBe(200);
     }
   });
 
