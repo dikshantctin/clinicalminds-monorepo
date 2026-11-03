@@ -143,8 +143,12 @@ test.describe('end-to-end clinic journey', () => {
 
     await loginAs(page, env.EMAIL, env.PASSWORD);
     await page.goto('/dashboard/tasks');
+    // The worker syncs a few seconds after the change; the button syncs now and reloads the board
+    await page.getByTestId('followup-refresh').click();
     await expect(page.getByTestId('followup-summary')).toBeVisible({ timeout: 15_000 });
     await page.getByRole('combobox').first().selectOption({ label: 'Follow-up queue' });
+    // A busy queue shows each cell's first cards only; find the new one the way staff would
+    await page.getByPlaceholder('Search tasks...').fill(patientFullName);
     await expect(page.getByText(`Missed session: ${patientFullName}`)).toHaveCount(1, { timeout: 15_000 });
   });
 
