@@ -39,4 +39,27 @@ test.describe('portal vs staff login', () => {
     await login.login(env.EMAIL, env.PASSWORD);
     await expect(page).toHaveURL(/\/dashboard$/);
   });
+
+  test('a patient who logs out lands on the patient sign-in, and / opens it again', async ({ page }) => {
+    const login = new LoginPage(page, '/portal/login');
+    await login.goto();
+    await login.login(DEMO_PATIENT.email, DEMO_PATIENT.password);
+    await expect(page).toHaveURL(/\/portal$/);
+    await page.getByRole('button', { name: 'Logout' }).click();
+    await expect(page).toHaveURL(/\/portal\/login$/);
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/portal\/login$/);
+  });
+
+  test('staff who log out land on the staff sign-in, and / opens it again', async ({ page }) => {
+    const login = new LoginPage(page, '/auth/login');
+    await login.goto();
+    await login.login(env.EMAIL, env.PASSWORD);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.getByTestId('user-menu').click();
+    await page.getByRole('menuitem', { name: 'Logout' }).click();
+    await expect(page).toHaveURL(/\/auth\/login$/);
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/auth\/login$/);
+  });
 });
