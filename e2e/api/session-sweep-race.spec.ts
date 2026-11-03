@@ -1,12 +1,13 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
- * The lazy no-show sweep (run by GET /sessions/ and the overview) marks a session still "scheduled"
- * 24 h after its end as no_show. It must never overwrite a concurrent cancel: a cancel that
- * answered 200 leaves the session cancelled, however the requests interleave.
+ * The sweep (the follow-up worker, or a staff POST /kanban/followups/sync) flags a session still "scheduled" 24 h after
+ * its end as needs_confirmation; it never changes the status. So a concurrent cancel always wins: it
+ * answers 200 and leaves the session cancelled, however the requests interleave.
  */
-test.describe('no-show sweep vs a concurrent cancel', () => {
+test.describe('needs-confirmation sweep vs a concurrent cancel', () => {
   requireApi();
   requireAuth();
 
@@ -15,9 +16,7 @@ test.describe('no-show sweep vs a concurrent cancel', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Sweep'), last_name: 'Race' } })).json();
     try {
       for (let round = 0; round < 15; round++) {
-        const created = await api.post('/api/v1/sessions/', {
-          data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 },
-        });
+        const created = await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 });
         expect(created.status(), await created.text()).toBe(200);
         const session = await created.json();
         // three days ago: stale enough for the sweep (create refuses past times; update does not)
@@ -26,15 +25,11 @@ test.describe('no-show sweep vs a concurrent cancel', () => {
 
         const [cancel] = await Promise.all([
           api.post(`/api/v1/sessions/${session.id}/cancel`, { data: { reason: 'e2e sweep race' } }),
-          ...Array.from({ length: 4 }, () => api.get('/api/v1/analytics/overview')),
+          ...Array.from({ length: 4 }, () => api.post('/api/v1/kanban/followups/sync')),
         ]);
         const after = await (await api.get(`/api/v1/sessions/${session.id}`)).json();
-        if (cancel.status() === 200) {
-          expect(after.status, `round ${round}: cancel answered 200`).toBe('cancelled');
-        } else {
-          expect(cancel.status(), await cancel.text()).toBe(409); // the sweep got there first
-          expect(after.status).toBe('no_show');
-        }
+        expect(cancel.status(), `round ${round}: ${await cancel.text()}`).toBe(200);
+        expect(after.status, `round ${round}`).toBe('cancelled');
       }
     } finally {
       await api.delete(`/api/v1/patients/${patient.id}`);

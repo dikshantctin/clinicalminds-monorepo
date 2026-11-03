@@ -1,6 +1,7 @@
 import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /** GET /analytics/overview — the dashboard's four numbers, counted from real rows (overview_service.py). */
 test.describe('/api/v1/analytics/overview', () => {
@@ -34,9 +35,7 @@ test.describe('/api/v1/analytics/overview', () => {
     const overview = async () => (await api.get('/api/v1/analytics/overview')).json();
     try {
       const before = await overview();
-      const created = await api.post('/api/v1/sessions/', {
-        data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), duration_minutes: 50 },
-      });
+      const created = await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), duration_minutes: 50 });
       expect(created.status(), await created.text()).toBe(200);
       const session = await created.json();
 
@@ -60,26 +59,30 @@ test.describe('/api/v1/analytics/overview', () => {
     }
   });
 
-  test('a session still "scheduled" 24 h after its end is swept into no_show when the overview is read', async ({ api }) => {
+  test('reading the overview writes nothing; a follow-up refresh flags a session 24 h past its end as needs confirmation', async ({ api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Stale'), last_name: 'Patient' } })).json();
     try {
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 })
       ).json();
       // the create endpoint refuses past times; the update endpoint does not
       const moved = await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 26 * 3_600_000).toISOString() } });
       expect(moved.status(), await moved.text()).toBe(200);
 
       expect((await api.get('/api/v1/analytics/overview')).status()).toBe(200);
+      expect((await api.get('/api/v1/sessions/')).status()).toBe(200);
+      // page views never sweep (the Celery worker does, every 5 min; a staff "Refresh follow-ups" does it now)
+      expect(await (await api.get(`/api/v1/sessions/${session.id}`)).json()).toEqual(expect.objectContaining({ status: 'scheduled', outcome: null }));
+
+      expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200);
       const swept = await (await api.get(`/api/v1/sessions/${session.id}`)).json();
-      expect(swept.status).toBe('no_show');
-      expect(swept.session_notes).toContain('Marked no-show automatically');
+      expect(swept).toEqual(expect.objectContaining({ status: 'scheduled', outcome: 'needs_confirmation' }));
+      expect(swept.session_notes).toContain('Needs confirmation: not marked within 24 hours of the scheduled end');
 
       // and the follow-up queue keeps a "Missed session" card for it (it still needs a rebook call)
-      await api.post('/api/v1/kanban/followups/sync');
       const queue = await (await api.get('/api/v1/kanban/followups')).json();
       const card = queue.items.find((t: { related_session_id: string | null }) => t.related_session_id === session.id);
-      expect(card, 'missed-session card survives the no_show status').toEqual(expect.objectContaining({ reason: 'missed_session' }));
+      expect(card, 'the missed-session card reminds the clinician to mark it').toEqual(expect.objectContaining({ reason: 'missed_session' }));
     } finally {
       await api.delete(`/api/v1/patients/${patient.id}`);
     }
@@ -114,7 +117,7 @@ test.describe('/api/v1/analytics/overview', () => {
 
       const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Cash'), last_name: 'Patient' } })).json();
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString() } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString() })
       ).json();
       expect((await api.get(`/api/v1/sessions/${session.id}/payments`)).status()).toBe(200);
       expect(await (await api.get(`/api/v1/sessions/${session.id}/payments`)).json()).toEqual([]);

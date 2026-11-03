@@ -1,6 +1,7 @@
 import { APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * GET /patients/ carries each listed patient's visit history from real sessions:
@@ -12,7 +13,7 @@ import { uniq } from '../src/env';
 const day = (n: number) => new Date(Date.now() + n * 86400_000).toISOString().replace(/\.\d+Z$/, 'Z');
 
 async function session(api: APIRequestContext, patientId: string, inDays: number): Promise<{ id: string; scheduled_at: string }> {
-  const res = await api.post('/api/v1/sessions/', { data: { patient_id: patientId, scheduled_at: day(inDays), duration_minutes: 50 } });
+  const res = await bookSession(api, { patient_id: patientId, scheduled_at: day(inDays), duration_minutes: 50 });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
 }
