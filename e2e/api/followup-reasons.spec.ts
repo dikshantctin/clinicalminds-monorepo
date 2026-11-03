@@ -1,7 +1,7 @@
 import { APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
-import { bookSession } from '../src/sessions';
+import { backdate, bookSession } from '../src/sessions';
 
 /**
  * Follow-up reasons beyond "missed session" (followups.spec.ts) and "risk flag" (sessions.spec.ts):
@@ -37,6 +37,7 @@ test.describe('follow-up reasons', () => {
   test('a no-show becomes a missed_session card straight away and stays a single open card', async ({ api }) => {
     const { patient, session } = await patientWithSession(api, 'NoShowCard');
     try {
+      await backdate(api, session.id); // no-show needs a session whose time has come
       expect((await api.post(`/api/v1/sessions/${session.id}/no-show`, { data: { reason: 'did not attend' } })).status()).toBe(200);
       const cards = await cardsFor(api, patient.id);
       expect(cards).toEqual([expect.objectContaining({ reason: 'missed_session', priority: 'high', related_session_id: session.id })]);

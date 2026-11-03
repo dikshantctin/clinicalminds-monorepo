@@ -1,6 +1,6 @@
 import { test, expect, expectNoCrash, requireWeb, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
-import { bookSession, uniqueDay } from '../src/sessions';
+import { backdate, bookSession, uniqueDay } from '../src/sessions';
 
 test.describe('sessions UI', () => {
   requireWeb();
@@ -61,6 +61,7 @@ test.describe('sessions UI', () => {
       const session = await (
         await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 3_600_000).toISOString() })
       ).json();
+      await backdate(api, session.id); // no-show needs a session whose time has come
       await page.goto('/dashboard/sessions');
       // the list is paged on the server: search narrows it to this patient
       await page.getByRole('searchbox', { name: 'Search sessions' }).fill(patient.first_name);

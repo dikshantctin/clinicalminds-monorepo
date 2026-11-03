@@ -125,10 +125,12 @@ test.describe('PUT /api/v1/sessions/{id}/outcome', () => {
     const patientId = await newPatient(api);
     try {
       const done = await newSession(api, patientId);
+      await backdate(api, done, 1); // complete / no-show need a session whose time has come
       expect((await api.post(`/api/v1/sessions/${done}/complete`)).status()).toBe(200);
       expect(await detail(api, done)).toEqual(expect.objectContaining({ status: 'completed', outcome: 'attended' }));
 
       const missed = await newSession(api, patientId);
+      await backdate(api, missed, 1);
       expect((await api.post(`/api/v1/sessions/${missed}/no-show`)).status()).toBe(200);
       expect(await detail(api, missed)).toEqual(expect.objectContaining({ status: 'no_show', outcome: 'no_show' }));
 

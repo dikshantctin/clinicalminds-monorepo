@@ -1,7 +1,7 @@
 import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_THERAPIST } from '../src/env';
-import { bookSession, uniqueDay } from '../src/sessions';
+import { backdate, bookSession, uniqueDay } from '../src/sessions';
 
 test.describe('/api/v1/sessions', () => {
   requireApi();
@@ -78,6 +78,7 @@ test.describe('/api/v1/sessions', () => {
       expect((await api.post(`/api/v1/sessions/${a}/start`)).status(), 'start a cancelled session').toBe(409);
 
       const b = await mk();
+      await backdate(api, b); // complete straight from scheduled needs a session whose time has come
       expect((await api.post(`/api/v1/sessions/${b}/complete`)).status()).toBe(200);
       expect((await api.post(`/api/v1/sessions/${b}/no-show`)).status(), 'no-show a completed session').toBe(409);
       expect((await api.post(`/api/v1/sessions/${b}/cancel`)).status(), 'cancel a completed session').toBe(409);

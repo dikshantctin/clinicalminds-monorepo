@@ -1,7 +1,7 @@
 import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq } from '../src/env';
-import { bookSession } from '../src/sessions';
+import { backdate, bookSession } from '../src/sessions';
 
 /** GET /analytics/overview — the dashboard's four numbers, counted from real rows (overview_service.py). */
 test.describe('/api/v1/analytics/overview', () => {
@@ -44,6 +44,7 @@ test.describe('/api/v1/analytics/overview', () => {
       expect(viaPut.status()).toBe(400);
       expect((await (await api.get(`/api/v1/sessions/${session.id}`)).json()).status).toBe('scheduled');
 
+      await backdate(api, session.id, 1); // no-show needs a session whose time has come (still this week)
       const marked = await api.post(`/api/v1/sessions/${session.id}/no-show`, { data: { reason: 'did not turn up' } });
       expect(marked.status(), await marked.text()).toBe(200);
       expect((await marked.json()).status).toBe('no_show');
