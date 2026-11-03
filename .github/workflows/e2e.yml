@@ -151,6 +151,19 @@ jobs:
           python scripts/setup_demo_data.py
           python scripts/demo_data.py import scripts/fixtures/demo_clinic.json
 
+      - name: Connect the demo clinic's Razorpay TEST account (the payments specs skip without one)
+        working-directory: backend
+        env:
+          RAZORPAY_KEY_ID: ${{ secrets.E2E_RAZORPAY_KEY_ID }}
+          RAZORPAY_KEY_SECRET: ${{ secrets.E2E_RAZORPAY_KEY_SECRET }}
+        run: |
+          if [ -z "$RAZORPAY_KEY_ID" ] || [ -z "$RAZORPAY_KEY_SECRET" ]; then
+            echo "::notice::E2E_RAZORPAY_* secrets not available to this run; the payments specs will skip"
+            exit 0
+          fi
+          # stdout names the key id and the secret's last 4 characters: keep both out of the log
+          python scripts/connect_demo_razorpay.py > /dev/null
+
       - name: Start frontend (production bundle, as shipped)
         working-directory: frontend
         env:
@@ -181,6 +194,10 @@ jobs:
 
       - name: Playwright (api + web)
         working-directory: e2e
+        env:
+          # the optional "validate a fresh pair" write-path specs (Razorpay TEST mode)
+          E2E_RAZORPAY_KEY_ID: ${{ secrets.E2E_RAZORPAY_KEY_ID }}
+          E2E_RAZORPAY_KEY_SECRET: ${{ secrets.E2E_RAZORPAY_KEY_SECRET }}
         run: npx playwright test --project=api --project=web
 
       - name: Service logs

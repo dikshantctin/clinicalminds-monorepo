@@ -98,7 +98,8 @@ web/                   auth, guards, navigation, patients, sessions, tasks-teams
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
-                       never on the page; a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
+                       never on the page; Remove webhook secret clears it and is absent when none is stored;
+                       a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
                        sessions also: mark no-show from the list, record a cash payment, save a risk flag on the detail page,
                        journey (serial, browser-only clinic day: admin publishes a service, registers a patient,
                        schedules a session → patient books online → therapist starts it → missed session shows on
@@ -127,8 +128,12 @@ cd ../backend && python scripts/connect_demo_razorpay.py rzp_test_xxxxx <key_sec
 
 The payment specs read the stored account (only the **public** key id; never the secret) and **skip with a
 reason** until it is connected. The webhook spec stores a fixed e2e webhook secret on the demo clinic's
-gateway (through `PUT /payments/config`) and signs its own deliveries with it; no public URL is needed. `E2E_RAZORPAY_*` is optional and only drives the extra "validate a fresh
+gateway (through `PUT /payments/config`) and signs its own deliveries with it; no public URL is needed. The api and web specs that write that single
+secret take a cross-file lock (`src/lock.ts`, `acquireLock('webhook-secret')`) so they never run side by side. `E2E_RAZORPAY_*` is optional and only drives the extra "validate a fresh
 pair" write test.
+
+In CI, `e2e.yml` connects the demo clinic from the monorepo secrets `E2E_RAZORPAY_KEY_ID` / `E2E_RAZORPAY_KEY_SECRET`
+(Razorpay TEST mode) and passes the same pair to Playwright, so these specs run there.
 
 The actual payment cannot be automated (Razorpay Checkout is a vendor iframe), so to prove a real Rs 1 charge:
 
