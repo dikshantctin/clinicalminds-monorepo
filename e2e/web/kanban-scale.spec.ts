@@ -54,6 +54,9 @@ test.describe('task board with many cards', () => {
     }
   });
 
+  const inProgress = async (): Promise<{ title: string }[]> =>
+    (await (await api.get('/api/v1/kanban/tasks', { params: { board_id: board.id, status: 'in_progress' } })).json()).tasks;
+
   test.afterAll(async () => {
     await api.delete(`/api/v1/kanban/boards/${board.id}`);
     await api.dispose();
@@ -86,8 +89,8 @@ test.describe('task board with many cards', () => {
     await expect(cardIn(page, 'in_progress', titles[0])).toBeVisible({ timeout: DRAG_BUDGET_MS });
     expect(Date.now() - started).toBeLessThan(DRAG_BUDGET_MS);
 
-    const tasks = (await (await api.get('/api/v1/kanban/tasks', { params: { board_id: board.id, status: 'in_progress' } })).json()).tasks;
-    expect(tasks.map((t: { title: string }) => t.title)).toEqual([titles[0]]);
+    // The card shows before its move request lands (optimistic update); wait for the server
+    await expect.poll(async () => (await inProgress()).map((t) => t.title)).toEqual([titles[0]]);
   });
 
   test('a card dropped on the empty space of a busy cell stays in sight', async ({ page }) => {
@@ -100,8 +103,7 @@ test.describe('task board with many cards', () => {
     await expect(cardIn(page, 'todo', titles[0])).toBeVisible({ timeout: DRAG_BUDGET_MS });
     await expect(cell(page, 'todo').getByTestId('task-card')).toHaveCount(SHOWN_PER_CELL);
 
-    const res = await api.get('/api/v1/kanban/tasks', { params: { board_id: board.id, status: 'in_progress' } });
-    expect((await res.json()).tasks).toEqual([]);
+    await expect.poll(async () => (await inProgress()).length).toBe(0);
   });
 
   test('refreshing follow-ups reloads the board only when the sync changed something', async ({ page }) => {
