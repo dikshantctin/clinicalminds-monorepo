@@ -61,8 +61,8 @@ test.describe('POST /api/v1/onboarding/validate field rules', () => {
   });
 
   test('a missing organization type answers 422 on organization.type', async ({ anon }) => {
-    const data = validPayload() as ReturnType<typeof validPayload> & { organization: { type?: string } };
-    delete data.organization.type;
+    const { organization: { type: _type, ...organization }, ...rest } = validPayload();
+    const data = { ...rest, organization };
     const res = await anon.post('/api/v1/onboarding/validate', { data });
     expect(res.status()).toBe(422);
     expect(await invalidFields(res)).toEqual(['organization.type']);
