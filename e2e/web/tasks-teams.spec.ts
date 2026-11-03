@@ -62,6 +62,8 @@ test.describe('clinical follow-up queue (UI)', () => {
       await page.goto('/dashboard/tasks');
       await expect(page.getByTestId('followup-summary')).toBeVisible({ timeout: 15_000 });
       await page.getByRole('combobox').first().selectOption({ label: 'Follow-up queue' });
+      // A busy queue shows each cell's first cards only; find the new one the way staff would
+      await page.getByPlaceholder('Search tasks...').fill(patient.first_name);
       const card = page.getByText(`Missed session: ${patient.first_name} Patient`);
       await expect(card).toHaveCount(1, { timeout: 15_000 }); // exactly one: concurrent syncs must not duplicate
       // card markup: div.relative > [div.flex > h4.title, span.priority] + span[data-testid=followup-reason]
