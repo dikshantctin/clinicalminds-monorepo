@@ -2,11 +2,11 @@ import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 
 /**
- * The lazy no-show sweep (run by GET /sessions/ and the overview) marks a session still "scheduled"
- * 24 h after its end as no_show. It must never overwrite a concurrent cancel: a cancel that
- * answered 200 leaves the session cancelled, however the requests interleave.
+ * The lazy sweep (run by GET /sessions/ and the overview) flags a session still "scheduled" 24 h after
+ * its end as needs_confirmation; it never changes the status. So a concurrent cancel always wins: it
+ * answers 200 and leaves the session cancelled, however the requests interleave.
  */
-test.describe('no-show sweep vs a concurrent cancel', () => {
+test.describe('needs-confirmation sweep vs a concurrent cancel', () => {
   requireApi();
   requireAuth();
 
@@ -29,12 +29,8 @@ test.describe('no-show sweep vs a concurrent cancel', () => {
           ...Array.from({ length: 4 }, () => api.get('/api/v1/analytics/overview')),
         ]);
         const after = await (await api.get(`/api/v1/sessions/${session.id}`)).json();
-        if (cancel.status() === 200) {
-          expect(after.status, `round ${round}: cancel answered 200`).toBe('cancelled');
-        } else {
-          expect(cancel.status(), await cancel.text()).toBe(409); // the sweep got there first
-          expect(after.status).toBe('no_show');
-        }
+        expect(cancel.status(), `round ${round}: ${await cancel.text()}`).toBe(200);
+        expect(after.status, `round ${round}`).toBe('cancelled');
       }
     } finally {
       await api.delete(`/api/v1/patients/${patient.id}`);

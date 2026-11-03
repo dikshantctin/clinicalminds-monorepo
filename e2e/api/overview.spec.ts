@@ -60,7 +60,7 @@ test.describe('/api/v1/analytics/overview', () => {
     }
   });
 
-  test('a session still "scheduled" 24 h after its end is swept into no_show when the overview is read', async ({ api }) => {
+  test('a session still "scheduled" 24 h after its end needs confirmation (never a guessed no-show) when the overview is read', async ({ api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Stale'), last_name: 'Patient' } })).json();
     try {
       const session = await (
@@ -72,14 +72,14 @@ test.describe('/api/v1/analytics/overview', () => {
 
       expect((await api.get('/api/v1/analytics/overview')).status()).toBe(200);
       const swept = await (await api.get(`/api/v1/sessions/${session.id}`)).json();
-      expect(swept.status).toBe('no_show');
-      expect(swept.session_notes).toContain('Marked no-show automatically');
+      expect(swept).toEqual(expect.objectContaining({ status: 'scheduled', outcome: 'needs_confirmation' }));
+      expect(swept.session_notes).toContain('Needs confirmation: not marked within 24 hours of the scheduled end');
 
       // and the follow-up queue keeps a "Missed session" card for it (it still needs a rebook call)
       await api.post('/api/v1/kanban/followups/sync');
       const queue = await (await api.get('/api/v1/kanban/followups')).json();
       const card = queue.items.find((t: { related_session_id: string | null }) => t.related_session_id === session.id);
-      expect(card, 'missed-session card survives the no_show status').toEqual(expect.objectContaining({ reason: 'missed_session' }));
+      expect(card, 'the missed-session card reminds the clinician to mark it').toEqual(expect.objectContaining({ reason: 'missed_session' }));
     } finally {
       await api.delete(`/api/v1/patients/${patient.id}`);
     }
