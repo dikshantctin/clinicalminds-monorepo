@@ -47,6 +47,7 @@ test.describe('PUT /api/v1/sessions/{id}/outcome', () => {
     const patientId = await newPatient(api);
     try {
       const id = await newSession(api, patientId);
+      await backdate(api, id, 2); // attended / no-show need a session that has started
       for (const [outcome, status] of Object.entries(STATUS_OF)) {
         const res = await api.put(`/api/v1/sessions/${id}/outcome`, { data: { outcome } });
         expect(res.status(), `${outcome}: ${await res.text()}`).toBe(200);
@@ -75,6 +76,24 @@ test.describe('PUT /api/v1/sessions/{id}/outcome', () => {
       expect((await api.put(`/api/v1/sessions/${RANDOM_UUID}/outcome`, { data: { outcome: 'attended' } })).status()).toBe(404);
       const d = await detail(api, id);
       expect(d).toEqual(expect.objectContaining({ status: 'scheduled', outcome: null, outcome_set_by: null, outcome_set_at: null }));
+    } finally {
+      await api.delete(`/api/v1/patients/${patientId}`);
+    }
+  });
+
+  test('a session that has not started cannot be tagged attended or no-show (409); a cancel tag is fine', async ({ api }) => {
+    const patientId = await newPatient(api);
+    try {
+      const id = await newSession(api, patientId); // 3 days ahead
+      for (const outcome of ['attended', 'no_show']) {
+        const res = await api.put(`/api/v1/sessions/${id}/outcome`, { data: { outcome } });
+        expect(res.status(), outcome).toBe(409);
+        expect((await res.json()).message).toBe('A session that has not started cannot be marked attended or no-show');
+      }
+      expect(await detail(api, id)).toEqual(expect.objectContaining({ status: 'scheduled', outcome: null }));
+      const cancel = await api.put(`/api/v1/sessions/${id}/outcome`, { data: { outcome: 'cancel_patient' } });
+      expect(cancel.status()).toBe(200);
+      expect(await detail(api, id)).toEqual(expect.objectContaining({ status: 'cancelled', outcome: 'cancel_patient' }));
     } finally {
       await api.delete(`/api/v1/patients/${patientId}`);
     }
