@@ -15,7 +15,7 @@ test.describe('session outcome UI', () => {
       ).json();
       const moved = await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 26 * 3_600_000).toISOString() } });
       expect(moved.status()).toBe(200);
-      expect((await api.get('/api/v1/analytics/overview')).status()).toBe(200); // runs the 24 h sweep
+      expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200); // runs the 24 h sweep
 
       await page.goto('/dashboard/sessions');
       await page.getByRole('searchbox', { name: 'Search sessions' }).fill(first);

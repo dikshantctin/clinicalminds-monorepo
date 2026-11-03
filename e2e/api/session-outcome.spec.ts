@@ -130,8 +130,8 @@ test.describe('the 24 h sweep flags "needs confirmation"', () => {
     try {
       const id = await newSession(api, patientId);
       await backdate(api, id, 26);
-      expect((await api.get('/api/v1/analytics/overview')).status()).toBe(200);
-      expect((await api.get('/api/v1/analytics/overview')).status()).toBe(200); // a second sweep changes nothing
+      expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200); // runs the sweep, as a worker tick does
+      expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200); // a second sweep changes nothing
       const flagged = await detail(api, id);
       expect(flagged).toEqual(expect.objectContaining({ status: 'scheduled', outcome: 'needs_confirmation', outcome_set_by: null }));
       expect(flagged.session_notes.split('Needs confirmation').length - 1).toBe(1);
@@ -155,7 +155,7 @@ test.describe('the 24 h sweep flags "needs confirmation"', () => {
     try {
       const id = await newSession(api, patientId);
       await backdate(api, id, 26);
-      expect((await api.get('/api/v1/analytics/overview')).status()).toBe(200);
+      expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200);
       expect((await detail(api, id)).outcome).toBe('needs_confirmation');
       expect((await api.post(`/api/v1/sessions/${id}/cancel`, { data: { reason: 'e2e' } })).status()).toBe(200);
       expect(await detail(api, id)).toEqual(expect.objectContaining({ status: 'cancelled', outcome: null, outcome_set_at: null }));
@@ -169,7 +169,7 @@ test.describe('the 24 h sweep flags "needs confirmation"', () => {
     try {
       const id = await newSession(api, patientId);
       await backdate(api, id, 100 * 24);
-      expect((await api.get('/api/v1/analytics/overview')).status()).toBe(200);
+      expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200);
       expect((await detail(api, id)).outcome).toBe('needs_confirmation');
       await api.post('/api/v1/kanban/followups/sync');
       const queue = await (await api.get('/api/v1/kanban/followups')).json();

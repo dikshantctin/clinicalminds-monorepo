@@ -2,7 +2,7 @@ import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 
 /**
- * The lazy sweep (run by GET /sessions/ and the overview) flags a session still "scheduled" 24 h after
+ * The sweep (the follow-up worker, or a staff POST /kanban/followups/sync) flags a session still "scheduled" 24 h after
  * its end as needs_confirmation; it never changes the status. So a concurrent cancel always wins: it
  * answers 200 and leaves the session cancelled, however the requests interleave.
  */
@@ -26,7 +26,7 @@ test.describe('needs-confirmation sweep vs a concurrent cancel', () => {
 
         const [cancel] = await Promise.all([
           api.post(`/api/v1/sessions/${session.id}/cancel`, { data: { reason: 'e2e sweep race' } }),
-          ...Array.from({ length: 4 }, () => api.get('/api/v1/analytics/overview')),
+          ...Array.from({ length: 4 }, () => api.post('/api/v1/kanban/followups/sync')),
         ]);
         const after = await (await api.get(`/api/v1/sessions/${session.id}`)).json();
         expect(cancel.status(), `round ${round}: ${await cancel.text()}`).toBe(200);

@@ -60,7 +60,7 @@ test.describe('/api/v1/analytics/overview', () => {
     }
   });
 
-  test('a session still "scheduled" 24 h after its end needs confirmation (never a guessed no-show) when the overview is read', async ({ api }) => {
+  test('reading the overview writes nothing; a follow-up refresh flags a session 24 h past its end as needs confirmation', async ({ api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Stale'), last_name: 'Patient' } })).json();
     try {
       const session = await (
@@ -71,12 +71,16 @@ test.describe('/api/v1/analytics/overview', () => {
       expect(moved.status(), await moved.text()).toBe(200);
 
       expect((await api.get('/api/v1/analytics/overview')).status()).toBe(200);
+      expect((await api.get('/api/v1/sessions/')).status()).toBe(200);
+      // page views never sweep (the Celery worker does, every 5 min; a staff "Refresh follow-ups" does it now)
+      expect(await (await api.get(`/api/v1/sessions/${session.id}`)).json()).toEqual(expect.objectContaining({ status: 'scheduled', outcome: null }));
+
+      expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200);
       const swept = await (await api.get(`/api/v1/sessions/${session.id}`)).json();
       expect(swept).toEqual(expect.objectContaining({ status: 'scheduled', outcome: 'needs_confirmation' }));
       expect(swept.session_notes).toContain('Needs confirmation: not marked within 24 hours of the scheduled end');
 
       // and the follow-up queue keeps a "Missed session" card for it (it still needs a rebook call)
-      await api.post('/api/v1/kanban/followups/sync');
       const queue = await (await api.get('/api/v1/kanban/followups')).json();
       const card = queue.items.find((t: { related_session_id: string | null }) => t.related_session_id === session.id);
       expect(card, 'the missed-session card reminds the clinician to mark it').toEqual(expect.objectContaining({ reason: 'missed_session' }));
