@@ -150,6 +150,20 @@ test.describe('the 24 h sweep flags "needs confirmation"', () => {
     }
   });
 
+  test('a plain cancel of a flagged session clears "needs confirmation" (still untagged)', async ({ api }) => {
+    const patientId = await newPatient(api);
+    try {
+      const id = await newSession(api, patientId);
+      await backdate(api, id, 26);
+      expect((await api.get('/api/v1/analytics/overview')).status()).toBe(200);
+      expect((await detail(api, id)).outcome).toBe('needs_confirmation');
+      expect((await api.post(`/api/v1/sessions/${id}/cancel`, { data: { reason: 'e2e' } })).status()).toBe(200);
+      expect(await detail(api, id)).toEqual(expect.objectContaining({ status: 'cancelled', outcome: null, outcome_set_at: null }));
+    } finally {
+      await api.delete(`/api/v1/patients/${patientId}`);
+    }
+  });
+
   test('an unconfirmed session older than the 90-day follow-up window keeps its "Missed session" card', async ({ api }) => {
     const patientId = await newPatient(api);
     try {
