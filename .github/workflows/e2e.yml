@@ -41,6 +41,12 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres -d clinical_mind_db"
           --health-interval 5s --health-timeout 5s --health-retries 20
+      redis: # rate-limit counters
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
 
     env:
       API_URL: http://localhost:8000
@@ -95,7 +101,7 @@ jobs:
         run: |
           cat > .env <<EOF
           DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/clinical_mind_db
-          REDIS_URL=redis://localhost:6379/0  # required setting; nothing connects to it
+          REDIS_URL=redis://localhost:6379/0
           ENVIRONMENT=test  # not development: no default-tenant fallback, so requests must carry their tenant as in production
           DEBUG=false
           SECRET_KEY=$(openssl rand -hex 32)
@@ -108,6 +114,7 @@ jobs:
           ANTHROPIC_API_KEY=unused-in-ci
           OPENAI_API_KEY=unused-in-ci
           EMAIL_OUTBOX_DIR=.email-outbox
+          RATE_LIMIT_IP_SCALE=100  # every spec shares one IP; per-account limits stay at production values
           EOF
 
       # the whole venv, not just pip's download cache: a hit skips the install entirely
@@ -144,6 +151,19 @@ jobs:
           python scripts/setup_demo_data.py
           python scripts/demo_data.py import scripts/fixtures/demo_clinic.json
 
+      - name: Connect the demo clinic's Razorpay TEST account (the payments specs skip without one)
+        working-directory: backend
+        env:
+          RAZORPAY_KEY_ID: ${{ secrets.E2E_RAZORPAY_KEY_ID }}
+          RAZORPAY_KEY_SECRET: ${{ secrets.E2E_RAZORPAY_KEY_SECRET }}
+        run: |
+          if [ -z "$RAZORPAY_KEY_ID" ] || [ -z "$RAZORPAY_KEY_SECRET" ]; then
+            echo "::notice::E2E_RAZORPAY_* secrets not available to this run; the payments specs will skip"
+            exit 0
+          fi
+          # stdout names the key id and the secret's last 4 characters: keep both out of the log
+          python scripts/connect_demo_razorpay.py > /dev/null
+
       - name: Start frontend (production bundle, as shipped)
         working-directory: frontend
         env:
@@ -174,6 +194,10 @@ jobs:
 
       - name: Playwright (api + web)
         working-directory: e2e
+        env:
+          # the optional "validate a fresh pair" write-path specs (Razorpay TEST mode)
+          E2E_RAZORPAY_KEY_ID: ${{ secrets.E2E_RAZORPAY_KEY_ID }}
+          E2E_RAZORPAY_KEY_SECRET: ${{ secrets.E2E_RAZORPAY_KEY_SECRET }}
         run: npx playwright test --project=api --project=web
 
       - name: Service logs
