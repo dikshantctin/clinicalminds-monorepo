@@ -25,7 +25,7 @@ test.describe('/api/v1/kanban/followups', () => {
       // `created` may be 0 here: another worker (Tasks page, journey) can sync first — the card below is the proof
       expect(summary.created).toBeGreaterThanOrEqual(0);
 
-      const queue = await (await api.get('/api/v1/kanban/followups')).json();
+      const queue = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: session.id } })).json();
       const card = queue.items.find((t: { related_session_id: string | null }) => t.related_session_id === session.id);
       expect(card, 'a card for the missed session').toBeTruthy();
       expect(card).toEqual(expect.objectContaining({ reason: 'missed_session', priority: 'high', status: 'todo', related_patient_id: patient.id }));
@@ -33,11 +33,11 @@ test.describe('/api/v1/kanban/followups', () => {
 
       // idempotent
       await api.post('/api/v1/kanban/followups/sync'); // other specs may create their own cards concurrently
-      const again = await (await api.get('/api/v1/kanban/followups')).json();
+      const again = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: session.id } })).json();
       expect(again.items.filter((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toHaveLength(1);
 
-      // the card lives on the Follow-up queue board, visible through the normal kanban API
-      const boards = await (await api.get('/api/v1/kanban/boards')).json();
+      // the card lives on the Follow-up queue board; the board list shows it only with include_auto (the Tasks picker hides it)
+      const boards = await (await api.get('/api/v1/kanban/boards', { params: { include_auto: true } })).json();
       const boardList = Array.isArray(boards) ? boards : boards.boards ?? boards.items ?? [];
       expect(boardList.map((b: { name: string }) => b.name)).toContain('Follow-up queue');
 
@@ -45,7 +45,7 @@ test.describe('/api/v1/kanban/followups', () => {
       const done = await api.post(`/api/v1/kanban/tasks/${card.id}/move`, { data: { status: 'done', position: 0 } });
       expect(done.status(), await done.text()).toBe(200);
       await api.post('/api/v1/kanban/followups/sync');
-      const after = await (await api.get('/api/v1/kanban/followups')).json();
+      const after = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: session.id } })).json();
       expect(after.items.filter((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toHaveLength(0);
     } finally {
       await api.post(`/api/v1/sessions/${session.id}/cancel`, { data: { reason: 'e2e cleanup' } });
@@ -61,13 +61,13 @@ test.describe('/api/v1/kanban/followups', () => {
     await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 3 * 3_600_000).toISOString() } });
     try {
       await api.post('/api/v1/kanban/followups/sync');
-      let queue = await (await api.get('/api/v1/kanban/followups')).json();
+      let queue = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: session.id } })).json();
       expect(queue.items.some((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toBe(true);
       // the therapist rebooks it for next week → the reminder is no longer justified
       await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() + 7 * 86_400_000).toISOString() } });
       // (the overview endpoint also syncs, so another worker may have archived it already — the queue is the proof)
       expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200);
-      queue = await (await api.get('/api/v1/kanban/followups')).json();
+      queue = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: session.id } })).json();
       expect(queue.items.some((t: { related_session_id: string | null }) => t.related_session_id === session.id)).toBe(false);
     } finally {
       await api.post(`/api/v1/sessions/${session.id}/cancel`, { data: { reason: 'e2e cleanup' } });

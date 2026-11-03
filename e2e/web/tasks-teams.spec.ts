@@ -52,24 +52,21 @@ test.describe('clinical follow-up queue (UI)', () => {
   requireWeb();
   requireAuth();
 
-  test('a missed session shows up as a follow-up card on the Follow-up queue board', async ({ page, api }) => {
+  test('a missed session shows up once on the Follow-ups page', async ({ page, api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Queue'), last_name: 'Patient' } })).json();
     const session = await (
       await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() } })
     ).json();
     await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 3 * 3_600_000).toISOString() } });
     try {
-      await page.goto('/dashboard/tasks');
-      // The worker syncs a few seconds after the change; the button syncs now and reloads the board
+      await page.goto('/dashboard/follow-ups');
+      // The worker syncs a few seconds after the change; the button syncs now and reloads the list
       await page.getByTestId('followup-refresh').click();
       await expect(page.getByTestId('followup-summary')).toBeVisible({ timeout: 15_000 });
-      await page.getByRole('combobox').first().selectOption({ label: 'Follow-up queue' });
-      // A busy queue shows each cell's first cards only; find the new one the way staff would
-      await page.getByPlaceholder('Search tasks...').fill(patient.first_name);
-      const card = page.getByText(`Missed session: ${patient.first_name} Patient`);
-      await expect(card).toHaveCount(1, { timeout: 15_000 }); // exactly one: concurrent syncs must not duplicate
-      // card markup: div.relative > [div.flex > h4.title, span.priority] + span[data-testid=followup-reason]
-      await expect(card.locator('..').locator('..').getByTestId('followup-reason')).toHaveText('Missed session');
+      await page.getByRole('searchbox').fill(patient.first_name);
+      const row = page.getByTestId('followup-row').filter({ hasText: `${patient.first_name} Patient` });
+      await expect(row).toHaveCount(1, { timeout: 15_000 }); // exactly one: concurrent syncs must not duplicate
+      await expect(row).toContainText('Missed session');
     } finally {
       await api.post(`/api/v1/sessions/${session.id}/cancel`, { data: { reason: 'e2e cleanup' } });
       await api.delete(`/api/v1/patients/${patient.id}`);

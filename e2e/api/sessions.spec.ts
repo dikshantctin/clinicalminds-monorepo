@@ -102,14 +102,14 @@ test.describe('/api/v1/sessions', () => {
       expect(row.crisis_detected).toBe(true);
 
       await api.post('/api/v1/kanban/followups/sync');
-      let queue = await (await api.get('/api/v1/kanban/followups')).json();
+      let queue = await (await api.get('/api/v1/kanban/followups', { params: { related_patient_id: patient.id } })).json();
       const card = queue.items.find((t: { related_patient_id: string | null; reason: string }) => t.related_patient_id === patient.id && t.reason === 'risk_flag');
       expect(card, 'an urgent risk-flag card').toEqual(expect.objectContaining({ priority: 'urgent' }));
 
       expect((await api.put(`/api/v1/sessions/${session.id}`, { data: { risk_flag: false } })).status()).toBe(200);
       expect((await (await api.get(`/api/v1/sessions/${session.id}`)).json()).crisis_detected).toBe(false);
       await api.post('/api/v1/kanban/followups/sync');
-      queue = await (await api.get('/api/v1/kanban/followups')).json();
+      queue = await (await api.get('/api/v1/kanban/followups', { params: { related_patient_id: patient.id } })).json();
       expect(queue.items.some((t: { related_patient_id: string | null; reason: string }) => t.related_patient_id === patient.id && t.reason === 'risk_flag')).toBe(false);
     } finally {
       await api.delete(`/api/v1/patients/${patient.id}`);

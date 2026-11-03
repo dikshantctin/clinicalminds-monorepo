@@ -157,7 +157,7 @@ test.describe('the 24 h sweep flags "needs confirmation"', () => {
 
       // the clinician is reminded through the follow-up queue's "Missed session" card
       await api.post('/api/v1/kanban/followups/sync');
-      const queue = await (await api.get('/api/v1/kanban/followups')).json();
+      const queue = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: id } })).json();
       const card = queue.items.find((t: { related_session_id: string | null }) => t.related_session_id === id);
       expect(card).toEqual(expect.objectContaining({ reason: 'missed_session' }));
 
@@ -191,7 +191,7 @@ test.describe('the 24 h sweep flags "needs confirmation"', () => {
       expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200);
       expect((await detail(api, id)).outcome).toBe('needs_confirmation');
       await api.post('/api/v1/kanban/followups/sync');
-      const queue = await (await api.get('/api/v1/kanban/followups')).json();
+      const queue = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: id } })).json();
       const card = queue.items.find((t: { related_session_id: string | null }) => t.related_session_id === id);
       expect(card).toEqual(expect.objectContaining({ reason: 'missed_session' }));
     } finally {

@@ -88,7 +88,7 @@ test.describe('/api/v1/patients', () => {
     const admin = await as(`admin.${slug}@example.com`);
     const therapist = await as(`therapist.${slug}@example.com`);
     const totals = async (ctx: APIRequestContext) => {
-      const queue = await (await ctx.get('/api/v1/kanban/followups')).json();
+      const queue = await (await ctx.get('/api/v1/kanban/followups', { params: { per_page: 100 } })).json();
       return {
         all: (await (await ctx.get('/api/v1/patients/?include_inactive=true&limit=1')).json()).total,
         active: (await (await ctx.get('/api/v1/patients/?limit=1')).json()).total,
