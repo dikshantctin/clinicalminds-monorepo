@@ -95,6 +95,18 @@ test.describe('POST /kanban/tasks/{id}/move with neighbours', () => {
     expect((await getTask(api, a.id)).updated_at).toBe(a.updated_at);
   });
 
+  test('deleting a card rewrites no other card in its column', async ({ api }) => {
+    const board = await newBoard(api);
+    boards.push(board.id);
+    const [a, b, c] = [await newTask(api, board.id), await newTask(api, board.id), await newTask(api, board.id)];
+
+    expect((await api.delete(`/api/v1/kanban/tasks/${a.id}`)).status()).toBe(200);
+    for (const other of [b, c]) {
+      const now = await getTask(api, other.id);
+      expect([now.position, now.updated_at]).toEqual([other.position, other.updated_at]);
+    }
+  });
+
   test('without a token a move is 401', async ({ anon }) => {
     const res = await anon.post('/api/v1/kanban/tasks/00000000-0000-4000-8000-000000000000/move', { data: { status: 'todo' } });
     expect(res.status()).toBe(401);
