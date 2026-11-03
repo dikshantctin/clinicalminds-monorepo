@@ -1,5 +1,6 @@
 import { test, expect, expectNoCrash, requireWeb, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession, uniqueDay } from '../src/sessions';
 
 test.describe('sessions UI', () => {
   requireWeb();
@@ -21,9 +22,7 @@ test.describe('sessions UI', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('SessUI'), last_name: 'Patient' } })).json();
     try {
       const session = await (
-        await api.post('/api/v1/sessions/', {
-          data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() },
-        })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() })
       ).json();
       await page.goto(`/dashboard/sessions/${session.id}`);
       await expect(page).toHaveURL(new RegExp(`/dashboard/sessions/${session.id}$`));
@@ -37,7 +36,7 @@ test.describe('sessions UI', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('EndUI'), last_name: 'Patient' } })).json();
     try {
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 3_600_000).toISOString() } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 3_600_000).toISOString() })
       ).json();
       expect((await api.post(`/api/v1/sessions/${session.id}/start`)).status()).toBe(200);
       await page.goto('/dashboard/sessions');
@@ -60,7 +59,7 @@ test.describe('sessions UI', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('NoShowUI'), last_name: 'Patient' } })).json();
     try {
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 3_600_000).toISOString() } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 3_600_000).toISOString() })
       ).json();
       await page.goto('/dashboard/sessions');
       // the list is paged on the server: search narrows it to this patient
@@ -89,7 +88,7 @@ test.describe('sessions UI', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('RiskUI'), last_name: 'Patient' } })).json();
     try {
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString() } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString() })
       ).json();
       await page.goto(`/dashboard/sessions/${session.id}`);
       await page.getByTestId('session-risk-flag').check();
@@ -118,7 +117,7 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
     try {
       const base = Date.now() + 2 * 86_400_000;
       for (let i = 0; i < 22; i++) {
-        const res = await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(base + i * 3_600_000).toISOString() } });
+        const res = await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(base + i * 3_600_000).toISOString() });
         expect(res.status()).toBe(200);
       }
       await page.goto('/dashboard/sessions');
@@ -139,7 +138,7 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
   test('search + type filter run on the server; types show their label', async ({ page, api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('TypeUI'), last_name: 'Patient' } })).json();
     try {
-      const day = istDate(new Date(Date.now() + 3 * 86_400_000));
+      const day = uniqueDay();
       for (const [hhmm, session_type] of [['10:00', 'individual'], ['11:00', 'family']]) {
         await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: `${day}T${hhmm}:00+05:30`, session_type } });
       }
@@ -162,7 +161,7 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
   test('the edit dialog reschedules (clinic time) and saves notes', async ({ page, api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('EditUI'), last_name: 'Patient' } })).json();
     try {
-      const day = istDate(new Date(Date.now() + 3 * 86_400_000));
+      const day = uniqueDay();
       const session = await (await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: `${day}T10:00:00+05:30` } })).json();
       await page.goto('/dashboard/sessions');
       await page.getByRole('searchbox', { name: 'Search sessions' }).fill(patient.first_name);
@@ -188,7 +187,7 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
   test('the schedule form sends the clinic offset: 10:00 entered is 10:00 IST', async ({ page, api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('FormTz'), last_name: 'Patient' } })).json();
     try {
-      const day = istDate(new Date(Date.now() + 3 * 86_400_000));
+      const day = uniqueDay();
       await page.goto(`/dashboard/sessions/new?patient_id=${patient.id}`);
       // The patient <select> is `required` and gets its options from GET /patients: submitting before that
       // list arrives fails native validation silently (no POST). Wait until the patient is actually chosen.
@@ -210,7 +209,7 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
   test('the detail page names the patient and the therapist', async ({ page, api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('DetailUI'), last_name: 'Patient' } })).json();
     try {
-      const session = await (await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() } })).json();
+      const session = await (await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() })).json();
       const detail = await (await api.get(`/api/v1/sessions/${session.id}`)).json();
       await page.goto(`/dashboard/sessions/${session.id}`);
       await expect(page.getByTestId('session-detail-patient')).toHaveText(`${patient.first_name} Patient`);
@@ -228,7 +227,11 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
     const hh = String(Math.max(hourIst + 1, 8)).padStart(2, '0');
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('GridUI'), last_name: 'Patient' } })).json();
     try {
-      const res = await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: `${istDate(new Date())}T${hh}:00:00+05:30` } });
+      // the hour is fixed (the grid slot under test) and parallel specs book the same demo admin: an admin may
+      // double-book with a reason, so this never meets a 409
+      const res = await api.post('/api/v1/sessions/', {
+        data: { patient_id: patient.id, scheduled_at: `${istDate(new Date())}T${hh}:00:00+05:30`, override_reason: 'e2e: grid slot under test' },
+      });
       expect(res.status(), await res.text()).toBe(200);
       await page.goto('/dashboard');
       await page.getByTestId(`schedule-slot-${hh}:00`).click();
