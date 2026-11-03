@@ -1,6 +1,7 @@
 import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, DEMO_THERAPIST } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * DELETE /patients/{id} deactivates: the patient leaves the active list (status inactive, is_active
@@ -16,9 +17,7 @@ test.describe('/api/v1/patients DELETE (deactivate)', () => {
     expect(created.status(), await created.text()).toBe(200);
     const patient = await created.json();
     const book = async (hoursAhead: number) => {
-      const res = await api.post('/api/v1/sessions/', {
-        data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + hoursAhead * 3_600_000).toISOString() },
-      });
+      const res = await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + hoursAhead * 3_600_000).toISOString() });
       expect(res.status(), await res.text()).toBe(200);
       return (await res.json()).id as string;
     };
@@ -88,9 +87,7 @@ test.describe('/api/v1/patients DELETE (deactivate)', () => {
       // assigned to them, so the 403 is the role rule, not "not your patient"
       const assigned = await api.put(`/api/v1/patients/${patient.id}`, { data: { assigned_therapist_id: user.id } });
       expect(assigned.status(), await assigned.text()).toBe(200);
-      const res = await api.post('/api/v1/sessions/', {
-        data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 48 * 3_600_000).toISOString() },
-      });
+      const res = await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 48 * 3_600_000).toISOString() });
       expect(res.status(), await res.text()).toBe(200);
       const sessionId = (await res.json()).id;
 
