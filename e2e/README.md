@@ -79,8 +79,10 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        staff-invite (Settings → Users & Permissions in throwaway clinics: invite → outbox link →
                        /auth/set-password → login with the role; GET /users pending → active; 409 duplicate, 422
                        PATIENT / lower-case role, 401 / 403 THERAPIST / 403 foreign clinic, token reuse 400, role
-                       change and removal reach the login, last ADMIN 400, a director invites an ADMIN, an account
-                       from another clinic gets no token and still lands in its first clinic, onboarding's "send
+                       change and removal reach the login, a director gets 403 granting, changing or removing ADMIN
+                       but manages every other role, an ADMIN may, one invite answer shape for every address, a
+                       removed invitee's link 400, an expired link 400 (signed with backend/.env's SECRET_KEY,
+                       E2E_BACKEND_ENV), an account from another clinic gets no token and still lands in its first clinic, onboarding's "send
                        invitation" emails the same link; the invitee's unproven phone → 403 verification_required),
                        patients, sessions (offsets, paging, filters, edit),
                        session-notes-access (a portal patient never gets clinician notes; a clinician
@@ -102,7 +104,7 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        THERAPIST 403 on writes; search + skip/limit totals; deactivated → gone from public booking;
                        structured location address round-trips)
 web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
-                       staff-invite (the Invite staff dialog validates and sends, role select, the other-clinic note,
+                       staff-invite (the Invite staff dialog validates and sends, role select, the same answer for another clinic's account,
                        the invitee's /auth/set-password → /auth/login → /auth/verify, Remove; the tab for a
                        CLINICAL_DIRECTOR and not for a THERAPIST),
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),

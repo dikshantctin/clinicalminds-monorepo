@@ -6,7 +6,7 @@ import { LoginPage } from '../src/pages/login.page';
 
 /**
  * Settings → Users & Permissions in the browser, in a clinic of its own: the admin invites a therapist through the
- * dialog, changes the role from the table, sees the note for someone who already works at another clinic; the
+ * dialog, changes the role from the table, adds someone who already works at another clinic (same answer); the
  * invitee follows the emailed link to /auth/set-password and logs in; the admin removes them. The API spec
  * (api/staff-invite.spec.ts) covers the edge cases.
  */
@@ -58,17 +58,14 @@ test.describe('staff invite (browser)', () => {
       const after = await (await admin.ctx.get(`/api/v1/tenants/${admin.tenant.id}/users`)).json();
       expect(after.find((u: { id: string }) => u.id === id).role).toBe('PSYCHOLOGIST');
 
-      // someone who already works at another clinic: added, with a note for the inviter
+      // someone who already works at another clinic: the inviter sees the same answer as for a new address
       await page.getByTestId('invite-staff-open').click();
       await dialog.getByTestId('invite-staff-email').fill(other.owner);
       await dialog.getByTestId('invite-staff-first-name').fill('Other');
       await dialog.getByTestId('invite-staff-last-name').fill('Owner');
       await dialog.getByTestId('invite-staff-role').selectOption('INTERN');
       await dialog.getByTestId('invite-staff-submit').click();
-      await expect(dialog.getByTestId('invite-staff-existing-note')).toContainText(
-        'This person already uses PsyClinicalMind at another clinic; until clinic switching ships, they will land in their first clinic.',
-      );
-      await dialog.getByTestId('invite-staff-done').click();
+      await expect(page.getByText(`Invitation sent to ${other.owner}`)).toBeVisible();
       await expect(dialog).toBeHidden();
 
       // the invitee follows the emailed link

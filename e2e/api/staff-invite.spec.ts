@@ -2,11 +2,12 @@ import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq, RANDOM_UUID } from '../src/env';
 import { deleteClinic, inviteStaff, loginAs, onboardClinic, CLINIC_PASSWORD } from '../src/clinics';
 import { inviteTokenFor, lastEmailTo } from '../src/outbox';
+import { staffInviteToken } from '../src/invite-token';
 
 /**
- * Staff after onboarding (Settings → Users & Permissions): ADMIN / CLINICAL_DIRECTOR invite any staff role,
- * change roles and remove people. Every write reaches the platform mapping login reads AND the tenant-data
- * association the routers read. Each test onboards its own clinic and deletes it.
+ * Staff after onboarding (Settings → Users & Permissions): ADMIN / CLINICAL_DIRECTOR invite staff, change roles
+ * and remove people; only an ADMIN grants, changes or removes ADMIN. Every write reaches the platform mapping
+ * login reads AND the tenant-data association the routers read. Each test onboards its own clinic and deletes it.
  */
 type StaffRow = { id: string; email: string; role: string; status: 'pending' | 'active' };
 
@@ -31,7 +32,7 @@ test.describe('staff invite, role change, removal', () => {
     try {
       const res = await inviteStaff(admin.ctx, tenantId, { email: invitee.toUpperCase(), role: 'THERAPIST', first_name: 'Tara', last_name: 'Pist' });
       expect(res.status(), await res.text()).toBe(200);
-      expect(await res.json()).toEqual({ message: 'Invitation sent', email: invitee, existing_account: false, other_clinic: false });
+      expect(await res.json()).toEqual({ message: 'Invitation sent', email: invitee });
       expect(lastEmailTo(invitee).html).toContain('/auth/set-password?token=');
       const token = inviteTokenFor(invitee);
 
@@ -104,7 +105,7 @@ test.describe('staff invite, role change, removal', () => {
       // a removed person can be invited back: same account, new role, password kept
       const back = await inviteStaff(admin.ctx, tenantId, { email: invitee, role: 'INTERN' });
       expect(back.status(), await back.text()).toBe(200);
-      expect((await back.json()).existing_account).toBe(true);
+      expect(await back.json()).toEqual({ message: 'Invitation sent', email: invitee }); // same shape for an existing account
       const returned = await loginAs(invitee, NEW_PASSWORD);
       expect(returned.user.role).toBe('INTERN');
       await returned.ctx.dispose();
@@ -148,31 +149,104 @@ test.describe('staff invite, role change, removal', () => {
     }
   });
 
-  test('a CLINICAL_DIRECTOR invites an ADMIN; the last ADMIN can be neither removed nor demoted', async ({ anon }) => {
+  test('a CLINICAL_DIRECTOR manages roles up to CLINICAL_DIRECTOR; only an ADMIN grants, changes or removes ADMIN', async ({ anon }) => {
     const adminEmail = email('admin');
-    const { owner } = await onboardClinic(anon, { ownerRole: 'CLINICAL_DIRECTOR', team: [{ email: adminEmail, role: 'ADMIN' }] });
+    const therapistEmail = email('ther');
+    const { owner } = await onboardClinic(anon, {
+      ownerRole: 'CLINICAL_DIRECTOR',
+      team: [{ email: adminEmail, role: 'ADMIN' }, { email: therapistEmail, role: 'THERAPIST' }],
+    });
     const director = await loginAs(owner);
     const tenantId = director.tenant.id;
+    const ADMIN_ONLY = 'Only an admin can grant, change or remove the admin role';
+    const user = (id: string) => `/api/v1/tenants/${tenantId}/users/${id}`;
+    const newAdmin = email('admin2');
     try {
       expect(director.user.permissions).toEqual(expect.arrayContaining(['create_users', 'edit_users', 'delete_users']));
-      const onlyAdmin = (await users(director.ctx, tenantId)).find((u) => u.email === adminEmail)!;
-      const remove = await director.ctx.delete(`/api/v1/tenants/${tenantId}/users/${onlyAdmin.id}`);
-      expect(remove.status()).toBe(400);
-      expect(await message(remove)).toBe('A clinic needs at least one admin');
-      const demote = await director.ctx.put(`/api/v1/tenants/${tenantId}/users/${onlyAdmin.id}/role`, { data: { role: 'THERAPIST' } });
-      expect(demote.status()).toBe(400);
-      expect(await message(demote)).toBe('A clinic needs at least one admin');
+      const before = await users(director.ctx, tenantId);
+      const admin = before.find((u) => u.email === adminEmail)!;
+      const therapist = before.find((u) => u.email === therapistEmail)!;
 
-      const newAdmin = email('admin2');
-      const res = await inviteStaff(director.ctx, tenantId, { email: newAdmin, role: 'ADMIN' });
-      expect(res.status(), await res.text()).toBe(200);
-      expect((await users(director.ctx, tenantId)).find((u) => u.email === newAdmin)).toEqual(
-        expect.objectContaining({ role: 'ADMIN', status: 'pending' }),
-      );
-      // with a second admin the first one may go
-      expect((await director.ctx.delete(`/api/v1/tenants/${tenantId}/users/${onlyAdmin.id}`)).status()).toBe(200);
+      // a CD can neither grant ADMIN nor change or remove an ADMIN
+      const invite = await inviteStaff(director.ctx, tenantId, { email: newAdmin, role: 'ADMIN' });
+      expect(invite.status(), await invite.text()).toBe(403);
+      expect(await message(invite)).toBe(ADMIN_ONLY);
+      const promote = await director.ctx.put(`${user(therapist.id)}/role`, { data: { role: 'ADMIN' } });
+      expect(promote.status(), await promote.text()).toBe(403);
+      expect(await message(promote)).toBe(ADMIN_ONLY);
+      const demote = await director.ctx.put(`${user(admin.id)}/role`, { data: { role: 'THERAPIST' } });
+      expect(demote.status(), await demote.text()).toBe(403);
+      expect(await message(demote)).toBe(ADMIN_ONLY);
+      const sideways = await director.ctx.put(`${user(admin.id)}/role`, { data: { role: 'CLINICAL_DIRECTOR' } });
+      expect(sideways.status(), await sideways.text()).toBe(403);
+      expect(await message(sideways)).toBe(ADMIN_ONLY);
+      const remove = await director.ctx.delete(user(admin.id));
+      expect(remove.status(), await remove.text()).toBe(403);
+      expect(await message(remove)).toBe(ADMIN_ONLY);
+      expect(await users(director.ctx, tenantId)).toEqual(before); // nothing was written
+
+      // a CD still invites, changes and removes everyone below ADMIN
+      const second = email('ther2');
+      const invited = await inviteStaff(director.ctx, tenantId, { email: second, role: 'THERAPIST' });
+      expect(invited.status(), await invited.text()).toBe(200);
+      expect(await invited.json()).toEqual({ message: 'Invitation sent', email: second });
+      expect((await director.ctx.put(`${user(therapist.id)}/role`, { data: { role: 'CLINICAL_DIRECTOR' } })).status()).toBe(200);
+      expect((await director.ctx.put(`${user(therapist.id)}/role`, { data: { role: 'INTERN' } })).status()).toBe(200);
+      expect((await director.ctx.delete(user(therapist.id))).status()).toBe(200);
     } finally {
       await director.ctx.dispose();
+    }
+
+    // an ADMIN may do all of it
+    const adminSession = await loginAs(adminEmail);
+    try {
+      const invite = await inviteStaff(adminSession.ctx, tenantId, { email: newAdmin, role: 'ADMIN' });
+      expect(invite.status(), await invite.text()).toBe(200);
+      const pending = (await users(adminSession.ctx, tenantId)).find((u) => u.email === newAdmin)!;
+      expect(pending).toEqual(expect.objectContaining({ role: 'ADMIN', status: 'pending' }));
+      const promote = await adminSession.ctx.put(`${user(director.user.id)}/role`, { data: { role: 'ADMIN' } });
+      expect(promote.status(), await promote.text()).toBe(200);
+      const demote = await adminSession.ctx.put(`${user(director.user.id)}/role`, { data: { role: 'CLINICAL_DIRECTOR' } });
+      expect(demote.status(), await demote.text()).toBe(200);
+      const remove = await adminSession.ctx.delete(user(pending.id));
+      expect(remove.status(), await remove.text()).toBe(200);
+      expect((await users(adminSession.ctx, tenantId)).find((u) => u.id === director.user.id)?.role).toBe('CLINICAL_DIRECTOR');
+    } finally {
+      await adminSession.ctx.dispose();
+      await deleteClinic(owner);
+    }
+  });
+
+  test('set-password: an invitee removed before setting a password cannot activate; an expired link is refused', async ({ anon }) => {
+    const { owner } = await onboardClinic(anon);
+    const admin = await loginAs(owner);
+    const tenantId = admin.tenant.id;
+    try {
+      const removed = email('removed');
+      expect((await inviteStaff(admin.ctx, tenantId, { email: removed, role: 'THERAPIST' })).status()).toBe(200);
+      const token = inviteTokenFor(removed);
+      const id = (await users(admin.ctx, tenantId)).find((u) => u.email === removed)!.id;
+      expect((await admin.ctx.delete(`/api/v1/tenants/${tenantId}/users/${id}`)).status()).toBe(200);
+      const set = await anon.post('/api/v1/auth/set-password', { data: { token, password: NEW_PASSWORD } });
+      expect(set.status(), await set.text()).toBe(400);
+      expect(await message(set)).toBe('This invitation is no longer valid');
+      expect((await anon.post('/api/v1/auth/login', { data: { email: removed, password: NEW_PASSWORD } })).status()).toBe(401);
+
+      const late = email('late');
+      expect((await inviteStaff(admin.ctx, tenantId, { email: late, role: 'INTERN' })).status()).toBe(200);
+      const lateId = (await users(admin.ctx, tenantId)).find((u) => u.email === late)!.id;
+      const expired = await anon.post('/api/v1/auth/set-password', {
+        data: { token: staffInviteToken(lateId, tenantId, -60), password: NEW_PASSWORD },
+      });
+      expect(expired.status(), await expired.text()).toBe(400);
+      expect(await message(expired)).toBe('Invalid or expired token');
+      // the same claims with a live expiry work: the 400 above was the expiry, not the signature
+      const live = await anon.post('/api/v1/auth/set-password', {
+        data: { token: staffInviteToken(lateId, tenantId, 600), password: NEW_PASSWORD },
+      });
+      expect(live.status(), await live.text()).toBe(200);
+    } finally {
+      await admin.ctx.dispose();
       await deleteClinic(owner);
     }
   });
@@ -187,7 +261,7 @@ test.describe('staff invite, role change, removal', () => {
       await firstLogin.ctx.dispose();
       const res = await inviteStaff(admin.ctx, admin.tenant.id, { email: first.owner, role: 'PSYCHOLOGIST' });
       expect(res.status(), await res.text()).toBe(200);
-      expect(await res.json()).toEqual({ message: 'Invitation sent', email: first.owner, existing_account: true, other_clinic: true });
+      expect(await res.json()).toEqual({ message: 'Invitation sent', email: first.owner }); // nothing about other clinics
       const mail = lastEmailTo(first.owner);
       expect(mail.html).not.toContain('token=');
       expect(mail.html).toContain('/auth/login');
