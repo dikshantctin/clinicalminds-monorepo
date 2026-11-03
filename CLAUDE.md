@@ -34,6 +34,7 @@ git -C backend status                           # work inside a submodule like a
 docker compose up -d postgres                 # Postgres 16+pgvector :5432 (Redis :6379 not in compose)
 pip install -r requirements.txt && cp .env.example .env
 python main.py                                # :8000  (uvicorn main:app --reload)
+celery -A app.worker.celery_app worker -B --concurrency=1   # follow-up queue worker (needs Redis at REDIS_URL)
 python scripts/setup_demo_data.py             # with the server UP: onboards the demo org — demo@clinicalmind.com / Password123! (ADMIN)
 python scripts/demo_data.py import scripts/fixtures/demo_clinic.json   # real demo rows (patients/sessions/payments), dates re-based onto today
 black . --line-length 100 && ruff check . && mypy app/
@@ -124,7 +125,9 @@ src/
   `.env` files are git-ignored; `.env.example` is the template.
 - **Kanban + clinical follow-up queue**: boards/tasks/comments/notifications, team assignment, dnd-kit UI;
   the "Follow-up queue" board is generated from sessions and risk flags (missed session, risk flag,
-  no first session, inactive 30+ days) by `POST /kanban/followups/sync`.
+  no first session, inactive 30+ days) by a Celery worker (`backend/app/worker`): a patient/session change queues a
+  sync for its clinic (debounced, ~5 s), beat re-syncs every clinic every 5 min; `POST /kanban/followups/sync` runs
+  one on demand ("Refresh follow-ups"). Page views do not write the queue.
 - **Onboarding + verification**: public business registration (`/onboarding/*`); admin email and phone are
   verified through the phone.email widget (`/verification/*`, hard gate: 403 `verification_required` for
   unverified users; demo/test identities are allow-listed in `VERIFICATION_TEST_*`). The SMTP OTP (`/otp/*`) is unused.
@@ -225,7 +228,7 @@ There is CI only, no deployment pipeline. Four GitHub Actions workflows:
 | monorepo | `.github/workflows/audit.yml` | weekly (Mon 02:30 IST), manual — not a PR gate | `pip-audit` on `backend/requirements-dev.txt`, `npm audit --audit-level=high` on `frontend` and `e2e`; red while known vulnerabilities remain, report in the run summary |
 | `backend` | `.github/workflows/ci.yml` | push to `main`, PR | Postgres service → `create_all` via `import main` → `make check` (ruff, mypy, pytest) |
 | `frontend` | `.github/workflows/ci.yml` | push to `main`, PR | `npm ci` → `make check` (lint, build — `build` runs `tsc`) |
-| monorepo | `.github/workflows/e2e.yml` | PR, push to `main` (both skip Markdown-only changes), manual; nightly 02:00 IST with backend/frontend at their latest `main` (manual: `submodule_heads`) | checkout with submodules → Postgres + Redis (rate-limit counters) → backend on :8000 (`create_all`, `alembic stamp head`) → `setup_demo_data.py` + `demo_data.py import` → `connect_demo_razorpay.py` (Razorpay TEST keys from secrets) → `vite build` + `vite preview` on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
+| monorepo | `.github/workflows/e2e.yml` | PR, push to `main` (both skip Markdown-only changes), manual; nightly 02:00 IST with backend/frontend at their latest `main` (manual: `submodule_heads`) | checkout with submodules → Postgres + Redis (rate-limit counters, Celery broker) → backend on :8000 (`create_all`, `alembic stamp head`) → follow-up worker (`celery … worker -B`) → `setup_demo_data.py` + `demo_data.py import` → `connect_demo_razorpay.py` (Razorpay TEST keys from secrets) → `vite build` + `vite preview` on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
 
 Merge order for a change spanning repos: backend PR (green) → frontend PR (green) → monorepo PR that bumps the
 submodule pointers (its e2e runs against exactly those commits). A pointer must name a commit on the submodule's

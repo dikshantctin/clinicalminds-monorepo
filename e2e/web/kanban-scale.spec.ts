@@ -106,21 +106,29 @@ test.describe('task board with many cards', () => {
     await expect.poll(async () => (await inProgress()).length).toBe(0);
   });
 
-  test('refreshing follow-ups reloads the board only when the sync changed something', async ({ page }) => {
+  test('opening the board runs no follow-up sync; Refresh follow-ups reloads it', async ({ page }) => {
+    const syncs: string[] = [];
     const boardLoads: string[] = [];
     page.on('request', (req) => {
       const url = new URL(req.url());
+      if (url.pathname === '/api/v1/kanban/followups/sync') syncs.push(req.url());
       if (url.pathname !== '/api/v1/kanban/tasks' || url.searchParams.get('board_id') !== board.id) return;
       if ((url.searchParams.get('page') ?? '1') === '1') boardLoads.push(req.url());
     });
 
+    // The background worker keeps the queue current: a page view writes nothing
+    await page.reload();
+    await page.getByRole('combobox', { name: 'Board' }).selectOption(board.id);
+    await expect(page.getByTestId('kanban-count-todo')).toHaveText(String(CARDS));
+    await page.waitForTimeout(1_500);
+    expect(syncs).toEqual([]);
+    expect(boardLoads).toHaveLength(1);
+
+    // The button syncs on demand and reloads the board, which may be older than the worker's last run
     const synced = page.waitForResponse((r) => r.url().endsWith('/api/v1/kanban/followups/sync'));
     await page.getByTestId('followup-refresh').click();
-    const res = await synced;
-    expect(res.status()).toBe(200);
-    const { created, archived } = await res.json();
-    await page.waitForTimeout(1_500);
-    // Other workers' patients can make this sync create or archive cards; then exactly one reload is right.
-    expect(boardLoads).toHaveLength(created + archived === 0 ? 0 : 1);
+    expect((await synced).status()).toBe(200);
+    await expect(page.getByTestId('followup-summary')).toBeVisible();
+    await expect.poll(() => boardLoads.length).toBe(2);
   });
 });
