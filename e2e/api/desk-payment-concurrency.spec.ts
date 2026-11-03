@@ -1,5 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * A session is paid once. Two desk payments sent at the same moment (double click, two receptionists)
@@ -14,9 +15,7 @@ test.describe('/api/v1/sessions/{id}/payments — concurrent desk payments', () 
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Race'), last_name: 'Patient' } })).json();
     try {
       for (let round = 0; round < 5; round++) {
-        const created = await api.post('/api/v1/sessions/', {
-          data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + (2 + round) * 86_400_000).toISOString() },
-        });
+        const created = await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + (2 + round) * 86_400_000).toISOString() });
         expect(created.status(), await created.text()).toBe(200);
         const session = await created.json();
         const results = await Promise.all(

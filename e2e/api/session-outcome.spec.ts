@@ -1,6 +1,7 @@
 import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_THERAPIST } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * Session outcome: one fixed tag per session (capacity MVP §3), recorded with who set it and when.
@@ -24,8 +25,8 @@ async function newPatient(api: APIRequestContext): Promise<string> {
 }
 
 async function newSession(api: APIRequestContext, patientId: string): Promise<string> {
-  const res = await api.post('/api/v1/sessions/', {
-    data: { patient_id: patientId, scheduled_at: new Date(Date.now() + 3 * 86_400_000).toISOString(), duration_minutes: 50 },
+  const res = await bookSession(api, {
+    patient_id: patientId, scheduled_at: new Date(Date.now() + 3 * 86_400_000).toISOString(), duration_minutes: 50,
   });
   expect(res.status(), await res.text()).toBe(200);
   return (await res.json()).id;

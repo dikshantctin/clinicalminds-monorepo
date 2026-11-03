@@ -1,5 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /** The clinical follow-up queue: cards generated from sessions / risk flags on the "Follow-up queue" board. */
 test.describe('/api/v1/kanban/followups', () => {
@@ -8,9 +9,7 @@ test.describe('/api/v1/kanban/followups', () => {
 
   test('a missed session becomes one follow-up card; syncing again does not duplicate it; closing it keeps it closed', async ({ api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Missed'), last_name: 'Patient' } })).json();
-    const created = await api.post('/api/v1/sessions/', {
-      data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 },
-    });
+    const created = await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 });
     expect(created.status(), await created.text()).toBe(200);
     const session = await created.json();
     // move it into the past (the create endpoint refuses past times; the update endpoint does not)
@@ -56,7 +55,7 @@ test.describe('/api/v1/kanban/followups', () => {
   test('a card is archived once its trigger is resolved (session rebooked)', async ({ api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Rebook'), last_name: 'Patient' } })).json();
     const session = await (
-      await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() } })
+      await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() })
     ).json();
     await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 3 * 3_600_000).toISOString() } });
     try {

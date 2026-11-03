@@ -1,6 +1,7 @@
 import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_THERAPIST } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 test.describe('/api/v1/patients', () => {
   requireApi();
@@ -109,9 +110,7 @@ test.describe('/api/v1/patients', () => {
       const gone = await create('Gone', true);
       await create('Unassigned', false);
       expect((await admin.ctx.delete(`/api/v1/patients/${gone}`)).status()).toBe(200);
-      const session = await (await admin.ctx.post('/api/v1/sessions/', {
-        data: { patient_id: missed, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() },
-      })).json();
+      const session = await (await bookSession(admin.ctx, { patient_id: missed, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() })).json();
       // move it into the past (create refuses past times; update does not) so the sync files a missed-session card
       expect((await admin.ctx.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 3 * 3_600_000).toISOString() } })).status()).toBe(200);
       expect((await admin.ctx.post('/api/v1/kanban/followups/sync')).status()).toBe(200);

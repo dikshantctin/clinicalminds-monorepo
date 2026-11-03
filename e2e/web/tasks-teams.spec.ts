@@ -1,5 +1,6 @@
 import { test, expect, expectNoCrash, requireWeb, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 test.describe('tasks (kanban) UI', () => {
   requireWeb();
@@ -55,7 +56,7 @@ test.describe('clinical follow-up queue (UI)', () => {
   test('a missed session shows up once on the Follow-ups page', async ({ page, api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Queue'), last_name: 'Patient' } })).json();
     const session = await (
-      await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() } })
+      await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() })
     ).json();
     await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 3 * 3_600_000).toISOString() } });
     try {

@@ -1,6 +1,7 @@
 import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_THERAPIST } from '../src/env';
+import { bookSession, uniqueDay } from '../src/sessions';
 
 test.describe('/api/v1/sessions', () => {
   requireApi();
@@ -25,7 +26,7 @@ test.describe('/api/v1/sessions', () => {
     const patient = await patientRes.json();
 
     try {
-      const scheduledAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+      const scheduledAt = new Date(`${uniqueDay()}T10:00:00+05:30`).toISOString(); // a day no other spec books
       const created = await api.post('/api/v1/sessions/', {
         data: { patient_id: patient.id, scheduled_at: scheduledAt, session_type: 'individual', treatment_modality: 'CBT', duration_minutes: 50 },
       });
@@ -64,7 +65,7 @@ test.describe('/api/v1/sessions', () => {
   test('cancel: scheduled or in-progress only; no-show: scheduled only; both staff-only', async ({ api, anon }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Trans'), last_name: 'Patient' } })).json();
     const mk = async () =>
-      (await (await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 3_600_000).toISOString() } })).json()).id;
+      (await (await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 3_600_000).toISOString() })).json()).id;
     try {
       const a = await mk();
       expect((await anon.post(`/api/v1/sessions/${a}/cancel`)).status(), 'no token').toBe(401);
@@ -90,7 +91,7 @@ test.describe('/api/v1/sessions', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Risk'), last_name: 'Patient' } })).json();
     try {
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 3_600_000).toISOString() } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 3_600_000).toISOString() })
       ).json();
       expect((await api.put(`/api/v1/sessions/${session.id}`, { data: { risk_level: 'severe' } })).status()).toBe(422);
 
@@ -117,9 +118,6 @@ test.describe('/api/v1/sessions', () => {
   });
 });
 
-/** "YYYY-MM-DD" in the clinic's zone (platform_firms.timezone, default Asia/Kolkata). */
-const istDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
-
 test.describe('/api/v1/sessions: offsets, paging, filters, edit', () => {
   requireApi();
   requireAuth();
@@ -127,7 +125,7 @@ test.describe('/api/v1/sessions: offsets, paging, filters, edit', () => {
   test('scheduled_at without a UTC offset is rejected (422) on create and update', async ({ api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Naive'), last_name: 'Patient' } })).json();
     try {
-      const day = istDate(new Date(Date.now() + 2 * 86_400_000));
+      const day = uniqueDay();
       const naive = await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: `${day}T10:00:00` } });
       expect(naive.status(), await naive.text()).toBe(422);
       expect(JSON.stringify(await naive.json())).toContain('scheduled_at must include a UTC offset');
@@ -146,7 +144,7 @@ test.describe('/api/v1/sessions: offsets, paging, filters, edit', () => {
   test('server paging: exact page sizes and a real total; search, type and date filters run in SQL', async ({ api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Page'), last_name: 'Patient' } })).json();
     try {
-      const day = istDate(new Date(Date.now() + 4 * 86_400_000));
+      const day = uniqueDay();
       // 00:30 IST is the previous UTC day: the date filter must use the clinic day
       for (const [hhmm, type] of [['00:30', 'individual'], ['10:00', 'Individual Therapy'], ['12:00', 'family']]) {
         const res = await api.post('/api/v1/sessions/', {
@@ -188,7 +186,7 @@ test.describe('/api/v1/sessions: offsets, paging, filters, edit', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Edit'), last_name: 'Patient' } })).json();
     const therapist = await loginTherapist();
     try {
-      const day = istDate(new Date(Date.now() + 5 * 86_400_000));
+      const day = uniqueDay();
       const session = await (await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: `${day}T10:00:00+05:30` } })).json();
       const moved = await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: `${day}T15:30:00+05:30`, session_notes: 'moved by e2e' } });
       expect(moved.status(), await moved.text()).toBe(200);

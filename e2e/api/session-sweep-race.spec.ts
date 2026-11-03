@@ -1,5 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * The sweep (the follow-up worker, or a staff POST /kanban/followups/sync) flags a session still "scheduled" 24 h after
@@ -15,9 +16,7 @@ test.describe('needs-confirmation sweep vs a concurrent cancel', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Sweep'), last_name: 'Race' } })).json();
     try {
       for (let round = 0; round < 15; round++) {
-        const created = await api.post('/api/v1/sessions/', {
-          data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 },
-        });
+        const created = await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 });
         expect(created.status(), await created.text()).toBe(200);
         const session = await created.json();
         // three days ago: stale enough for the sweep (create refuses past times; update does not)

@@ -1,6 +1,7 @@
 import { APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * Follow-up reasons beyond "missed session" (followups.spec.ts) and "risk flag" (sessions.spec.ts):
@@ -24,7 +25,7 @@ async function cardsFor(api: APIRequestContext, patientId: string): Promise<Card
 
 async function patientWithSession(api: APIRequestContext, label: string) {
   const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq(label), last_name: 'Patient' } })).json();
-  const res = await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: iso(2 * HOUR), duration_minutes: 50 } });
+  const res = await bookSession(api, { patient_id: patient.id, scheduled_at: iso(2 * HOUR), duration_minutes: 50 });
   expect(res.status(), await res.text()).toBe(200);
   return { patient, session: await res.json() };
 }
@@ -53,7 +54,7 @@ test.describe('follow-up reasons', () => {
       expect((await api.post(`/api/v1/sessions/${session.id}/complete`)).status()).toBe(200);
       expect(await cardsFor(api, patient.id)).toEqual([expect.objectContaining({ reason: 'inactive_patient', priority: 'medium', related_session_id: null })]);
 
-      const booked = await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: iso(3 * DAY), duration_minutes: 50 } });
+      const booked = await bookSession(api, { patient_id: patient.id, scheduled_at: iso(3 * DAY), duration_minutes: 50 });
       expect(booked.status()).toBe(200);
       next = await booked.json();
       expect(await cardsFor(api, patient.id)).toEqual([]);
