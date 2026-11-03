@@ -141,6 +141,13 @@ jobs:
           for i in $(seq 1 60); do curl -fsS http://localhost:8000/health && exit 0; sleep 2; done
           cat /tmp/backend.log; exit 1
 
+      - name: Start follow-up worker (Celery + beat; keeps the follow-up queue current, app/worker)
+        working-directory: backend
+        run: |
+          nohup celery -A app.worker.celery_app worker -B --concurrency=1 --loglevel=info > /tmp/worker.log 2>&1 &
+          for i in $(seq 1 30); do grep -q "ready" /tmp/worker.log && exit 0; sleep 1; done
+          cat /tmp/worker.log; exit 1
+
       - name: Alembic (schema came from create_all, so stamp rather than replay migrations)
         working-directory: backend
         run: alembic stamp head && alembic current
@@ -204,6 +211,7 @@ jobs:
         if: failure()
         run: |
           tail -n 200 /tmp/backend.log || true
+          tail -n 100 /tmp/worker.log || true
           tail -n 100 /tmp/frontend.log || true
 
       - uses: actions/upload-artifact@v4
