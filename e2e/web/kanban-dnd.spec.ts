@@ -62,13 +62,25 @@ test.describe('task board drag and drop', () => {
     await expect.poll(async () => (await getTask(api, ids[0])).status).toBe('review');
   });
 
-  test('a card dropped on another card in its column takes that place', async ({ page, api }) => {
-    const firstPosition = (await getTask(api, ids[0])).position;
+  test('a card dropped on another card in its column takes that place, and the board is not reloaded', async ({ page, api }) => {
+    const first = await getTask(api, ids[0]);
+    const reloads: string[] = [];
+    const moved = page.waitForResponse('**/api/v1/kanban/tasks/*/move');
     await drag(page, card(page, titles[3]), card(page, titles[0]));
+    expect((await moved).status()).toBe(200);
+    // Listen only after the drop: the move returns the task, so nothing re-downloads the board
+    page.on('request', (req) => {
+      if (req.method() === 'GET' && /\/api\/v1\/kanban\/tasks(\?|$)/.test(req.url())) reloads.push(req.url());
+    });
 
-    await expect.poll(async () => (await getTask(api, ids[3])).position).toBe(firstPosition);
-    expect((await getTask(api, ids[3])).status).toBe('todo');
     await expect(cell(page, 'unassigned', 'todo').getByTestId('task-card').first()).toContainText(titles[3]);
+    const after = await getTask(api, ids[3]);
+    expect(after.status).toBe('todo');
+    expect(after.position).toBeLessThan(first.position);
+    // The card it landed on was not rewritten
+    expect((await getTask(api, ids[0])).updated_at).toBe(first.updated_at);
+    await page.waitForTimeout(2_000);
+    expect(reloads).toEqual([]);
   });
 
   test('a card dropped in another team row is assigned to that team', async ({ page, api }) => {
@@ -88,7 +100,10 @@ test.describe('task board drag and drop', () => {
         })
         .toEqual(['in_progress', team.id]);
     } finally {
-      await api.delete(`/api/v1/teams/teams/${team.id}`);
+      // The board and its cards first (hard: a soft-deleted board keeps them), since a team with active
+      // tasks cannot be deleted
+      await api.delete(`/api/v1/kanban/boards/${board.id}`, { params: { hard_delete: true } });
+      expect((await api.delete(`/api/v1/teams/teams/${team.id}`)).status()).toBe(200);
     }
   });
 
