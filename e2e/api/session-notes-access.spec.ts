@@ -2,6 +2,7 @@ import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_THERAPIST, DEMO_PSYCHOLOGIST } from '../src/env';
 import { inviteTokenFor } from '../src/outbox';
+import { bookSession } from '../src/sessions';
 
 /**
  * Clinical notes are the clinician's record: a portal patient reads only what is written for them
@@ -36,13 +37,11 @@ async function createPatient(api: APIRequestContext, assignedTo?: string): Promi
 }
 
 async function book(ctx: APIRequestContext, patientId: string, sessionNotes?: string): Promise<string> {
-  const res = await ctx.post('/api/v1/sessions/', {
-    data: {
-      patient_id: patientId,
-      scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString(),
-      duration_minutes: 50,
-      ...(sessionNotes ? { session_notes: sessionNotes } : {}),
-    },
+  const res = await bookSession(ctx, {
+    patient_id: patientId,
+    scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+    duration_minutes: 50,
+    ...(sessionNotes ? { session_notes: sessionNotes } : {}),
   });
   expect(res.status(), await res.text()).toBe(200);
   return (await res.json()).id;

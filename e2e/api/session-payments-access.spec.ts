@@ -1,6 +1,7 @@
 import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, DEMO_THERAPIST, DEMO_PSYCHOLOGIST, DEMO_PATIENT } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * GET /sessions/{id}/payments shows amounts, so it follows the dashboard's money rule
@@ -42,7 +43,7 @@ test.describe('/api/v1/sessions/{id}/payments — who may see the money', () => 
       // a session owned by the therapist, paid at the desk by the admin
       const assigned = await api.put(`/api/v1/patients/${patient.id}`, { data: { assigned_therapist_id: therapist.userId } });
       expect(assigned.status(), await assigned.text()).toBe(200);
-      const own = await therapist.ctx.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: soon() } });
+      const own = await bookSession(therapist.ctx, { patient_id: patient.id, scheduled_at: soon() });
       expect(own.status(), await own.text()).toBe(200);
       const ownSession = await own.json();
       expect(ownSession.therapist_id).toBe(therapist.userId);
@@ -50,7 +51,7 @@ test.describe('/api/v1/sessions/{id}/payments — who may see the money', () => 
       expect(rec.status(), await rec.text()).toBe(200);
 
       // a session owned by the admin
-      const other = await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: soon() } });
+      const other = await bookSession(api, { patient_id: patient.id, scheduled_at: soon() });
       expect(other.status(), await other.text()).toBe(200);
       const adminSession = await other.json();
 
@@ -105,7 +106,7 @@ test.describe('/api/v1/sessions/{id}/payments — who may see the money', () => 
       const created = await admin.ctx.post('/api/v1/patients/', { data: { first_name: uniq('Desk'), last_name: 'Patient' } });
       expect(created.status(), await created.text()).toBe(200);
       const patient = await created.json();
-      const made = await admin.ctx.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: soon() } });
+      const made = await bookSession(admin.ctx, { patient_id: patient.id, scheduled_at: soon() });
       expect(made.status(), await made.text()).toBe(200);
       const session = await made.json();
       const rec = await desk.ctx.post(`/api/v1/sessions/${session.id}/payments`, { data: { amount_paise: 45000, method: 'upi' } });

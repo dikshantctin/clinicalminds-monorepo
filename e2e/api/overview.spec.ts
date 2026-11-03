@@ -1,6 +1,7 @@
 import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /** GET /analytics/overview — the dashboard's four numbers, counted from real rows (overview_service.py). */
 test.describe('/api/v1/analytics/overview', () => {
@@ -34,9 +35,7 @@ test.describe('/api/v1/analytics/overview', () => {
     const overview = async () => (await api.get('/api/v1/analytics/overview')).json();
     try {
       const before = await overview();
-      const created = await api.post('/api/v1/sessions/', {
-        data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), duration_minutes: 50 },
-      });
+      const created = await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), duration_minutes: 50 });
       expect(created.status(), await created.text()).toBe(200);
       const session = await created.json();
 
@@ -64,7 +63,7 @@ test.describe('/api/v1/analytics/overview', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Stale'), last_name: 'Patient' } })).json();
     try {
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 })
       ).json();
       // the create endpoint refuses past times; the update endpoint does not
       const moved = await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 26 * 3_600_000).toISOString() } });
@@ -114,7 +113,7 @@ test.describe('/api/v1/analytics/overview', () => {
 
       const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Cash'), last_name: 'Patient' } })).json();
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString() } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString() })
       ).json();
       expect((await api.get(`/api/v1/sessions/${session.id}/payments`)).status()).toBe(200);
       expect(await (await api.get(`/api/v1/sessions/${session.id}/payments`)).json()).toEqual([]);

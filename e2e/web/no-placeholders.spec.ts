@@ -1,5 +1,6 @@
 import { test, expect, requireWeb, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * Nothing on screen promises a feature that does not exist: no "AI Insights", no "Coming soon" badges or
@@ -32,7 +33,7 @@ test.describe('no placeholders', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('NoAI'), last_name: 'Patient' } })).json();
     try {
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString() } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString() })
       ).json();
       await page.goto(`/dashboard/sessions/${session.id}`);
       await expect(page.getByTestId('session-risk-flag')).toBeVisible();
