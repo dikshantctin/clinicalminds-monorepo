@@ -73,7 +73,8 @@ src/outbox.ts          reads the backend's dev email outbox (EMAIL_OUTBOX_DIR in
 src/pages/             page objects (login, dashboard nav + headings, add-patient form)
 api/                   health, auth, security (guards, tenant isolation, permissions),
                        role-access (table: route × role → exact 401/403/200; PATIENT needs a seeded
-                       patient.demo@democlinic.com login), patient-portal (invite → set password → portal
+                       patient.demo@democlinic.com login), desk-no-kanban (SUPPORT_STAFF → 403 on every
+                       /kanban and /teams route it tries, notifications and follow-ups included; ADMIN / THERAPIST 200), patient-portal (invite → set password → portal
                        login; the login audience picks staff vs PATIENT; an invite never overwrites a password),
                        patients, sessions (offsets, paging, filters, edit),
                        session-notes-access (a portal patient never gets clinician notes; a clinician
@@ -94,7 +95,7 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        catalog (services/locations: 422 for blank name, duration <= 0, negative or 3-decimal price;
                        THERAPIST 403 on writes; search + skip/limit totals; deactivated → gone from public booking;
                        structured location address round-trips)
-web/                   auth, guards, navigation, patients, sessions, tasks-teams, task-assignee-filter (Assignee filter by any staff member, exact card counts, no-match state), misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
+web/                   auth, guards, navigation, desk-no-kanban (the desk has no bell, no Tasks link, a follow-up tile that is not a link), patients, sessions, tasks-teams, task-assignee-filter (Assignee filter by any staff member, exact card counts, no-match state), misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
