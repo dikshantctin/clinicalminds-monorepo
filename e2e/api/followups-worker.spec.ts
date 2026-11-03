@@ -1,5 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * The follow-up queue is kept current by the background worker (backend app/worker), not by page views:
@@ -19,8 +20,8 @@ test.describe('follow-up queue background sync', () => {
   test.beforeEach(async ({ api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Worker'), last_name: 'Patient' } })).json();
     patientId = patient.id;
-    const created = await api.post('/api/v1/sessions/', {
-      data: { patient_id: patientId, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50 },
+    const created = await bookSession(api, {
+      patient_id: patientId, scheduled_at: new Date(Date.now() + 86_400_000).toISOString(), duration_minutes: 50,
     });
     expect(created.status(), await created.text()).toBe(200);
     sessionId = (await created.json()).id;

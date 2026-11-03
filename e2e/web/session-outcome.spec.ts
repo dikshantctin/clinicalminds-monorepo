@@ -1,5 +1,6 @@
 import { test, expect, requireWeb, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /** Session outcome on the session page and the sessions list (capacity MVP §3). */
 test.describe('session outcome UI', () => {
@@ -11,7 +12,7 @@ test.describe('session outcome UI', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: first, last_name: 'Patient' } })).json();
     try {
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 86_400_000).toISOString() })
       ).json();
       const moved = await api.put(`/api/v1/sessions/${session.id}`, { data: { scheduled_at: new Date(Date.now() - 26 * 3_600_000).toISOString() } });
       expect(moved.status()).toBe(200);
@@ -44,7 +45,7 @@ test.describe('session outcome UI', () => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Untagged'), last_name: 'Patient' } })).json();
     try {
       const session = await (
-        await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString() } })
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString() })
       ).json();
       await page.goto(`/dashboard/sessions/${session.id}`);
       await expect(page.getByTestId('session-outcome-current')).toHaveText('Not marked');
