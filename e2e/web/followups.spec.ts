@@ -1,6 +1,7 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 import { test, expect, requireWeb, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * The Follow-ups page replaces the auto "Follow-up queue" kanban board: a paged table, one tab per reason.
@@ -11,8 +12,8 @@ const HOUR = 3_600_000;
 
 async function missedSessionFor(api: APIRequestContext) {
   const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Fupage'), last_name: 'Patient' } })).json();
-  const res = await api.post('/api/v1/sessions/', {
-    data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + 24 * HOUR).toISOString(), duration_minutes: 50 },
+  const res = await bookSession(api, {
+    patient_id: patient.id, scheduled_at: new Date(Date.now() + 24 * HOUR).toISOString(), duration_minutes: 50,
   });
   expect(res.status(), await res.text()).toBe(200);
   const session = await res.json();

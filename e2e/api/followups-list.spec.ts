@@ -1,5 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
+import { bookSession } from '../src/sessions';
 
 /**
  * GET /kanban/followups is the Follow-ups page's list: paged, filtered by reason / status / assignee /
@@ -21,8 +22,8 @@ test.describe('follow-ups list', () => {
     sessions = [];
     // one session flagged at risk (urgent card) and one missed (high card)
     for (let i = 0; i < 2; i += 1) {
-      const res = await api.post('/api/v1/sessions/', {
-        data: { patient_id: patient.id, scheduled_at: new Date(Date.now() + (i + 1) * 24 * HOUR).toISOString(), duration_minutes: 50 },
+      const res = await bookSession(api, {
+        patient_id: patient.id, scheduled_at: new Date(Date.now() + (i + 1) * 24 * HOUR).toISOString(), duration_minutes: 50,
       });
       expect(res.status(), await res.text()).toBe(200);
       sessions.push((await res.json()).id);
@@ -78,6 +79,9 @@ test.describe('follow-ups list', () => {
   test('search matches the patient name in the card title', async ({ api }) => {
     const hit = await list(api, { search: patient.first_name.toUpperCase() });
     expect(hit.total).toBe(2);
+    // % and _ are literal characters, not wildcards
+    expect((await list(api, { search: '%' })).total).toBe(0);
+    expect((await list(api, { search: '_' })).total).toBe(0);
     const miss = await list(api, { search: uniq('nobody') });
     expect(miss.total).toBe(0);
     expect(miss.items).toEqual([]);
