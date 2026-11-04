@@ -9,8 +9,13 @@ import { env, uniq } from '../src/env';
  */
 const CARDS = 1000;
 const SHOWN_PER_CELL = 50;
-/** Press to "card shown in the new column". Uncapped, 1,000 cards took 3.9-4.0 s on a dev box; capped, well under 1 s. */
-const DRAG_BUDGET_MS = 2_000;
+/**
+ * Press to "card shown in the new column", as a loose upper bound only: wall-clock time flakes when CI or the
+ * machine is busy (2.06 s was seen under load against a 2 s budget). Uncapped, 1,000 cards took 3.9-4.0 s on a dev
+ * box; capped, well under 1 s. What made drags slow was every card being mounted (each a dnd-kit sortable that
+ * re-renders on every drag move), so the tests assert that structurally: only SHOWN_PER_CELL cards are mounted.
+ */
+const DRAG_BUDGET_MS = 6_000;
 
 const cell = (page: Page, status: string) => page.getByTestId(`kanban-cell-unassigned-${status}`);
 const cardIn = (page: Page, status: string, title: string) =>
@@ -80,12 +85,19 @@ test.describe('task board with many cards', () => {
     await expect(more).toHaveText(`Show ${CARDS - SHOWN_PER_CELL * 2} more`);
   });
 
-  test('a card on a busy board moves within the drag budget', async ({ page }) => {
+  test('a card on a busy board moves, with only one page of cards mounted', async ({ page }) => {
+    // 1,000 cards on the board, 50 in the DOM: the drag's re-renders stay bounded by the cap, not the board size
+    await expect(page.getByTestId('task-card')).toHaveCount(SHOWN_PER_CELL);
     const from = (await cardIn(page, 'todo', titles[0]).boundingBox())!;
     const to = (await cell(page, 'in_progress').boundingBox())!;
 
     const started = Date.now();
-    await drag(page, from, to.x + to.width / 2, to.y + 60);
+    await page.mouse.move(from.x + from.width / 2, from.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + 60, { steps: 10 });
+    // mid-drag nothing else mounts (the drag overlay is the one extra card)
+    await expect(page.getByTestId('task-card')).toHaveCount(SHOWN_PER_CELL + 1);
+    await page.mouse.up();
     await expect(cardIn(page, 'in_progress', titles[0])).toBeVisible({ timeout: DRAG_BUDGET_MS });
     expect(Date.now() - started).toBeLessThan(DRAG_BUDGET_MS);
 
