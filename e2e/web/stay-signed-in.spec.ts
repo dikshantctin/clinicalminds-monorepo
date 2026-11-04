@@ -191,4 +191,28 @@ test.describe('stay signed in (browser)', () => {
     const res = await anon.post(REFRESH, { data: { refresh_token: await stored(page, 'refresh_token') } });
     expect(res.status()).toBe(200);
   });
+
+  test('if the renewal cannot reach the server, the sign-in is kept and renews once back online', async ({ page }) => {
+    await signIn(page, '/auth/login', env.EMAIL, env.PASSWORD);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    const key = await stored(page, 'refresh_token');
+
+    // The access token has expired and the connection drops just as the app tries to renew it
+    await page.route(`**${REFRESH}`, (route) => route.abort('internetdisconnected'));
+    const failed = page.waitForEvent('requestfailed', (r) => r.url().endsWith(REFRESH));
+    await reloadExpired(page);
+    await failed;
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(/\/dashboard$/);
+    expect(await stored(page, 'refresh_token')).toBe(key);
+    expect(await stored(page, 'auth_user')).not.toBeNull();
+
+    // Back online: the next load renews quietly with the same key
+    await page.unroute(`**${REFRESH}`);
+    const renewed = page.waitForResponse((r) => r.url().endsWith(REFRESH));
+    await page.reload();
+    expect((await renewed).status()).toBe(200);
+    await expect(page.getByTestId('user-menu')).toBeVisible();
+    expect(await stored(page, 'refresh_token')).not.toBe(key);
+  });
 });
