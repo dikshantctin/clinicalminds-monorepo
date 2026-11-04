@@ -137,4 +137,58 @@ test.describe('stay signed in (browser)', () => {
     expect(res.status()).toBe(401);
     expect((await res.json()).message).toBe('Session ended');
   });
+
+  test('logout with an expired access token still ends the sign-in', async ({ page, anon }) => {
+    await signIn(page, '/auth/login', env.EMAIL, env.PASSWORD);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    const key = await stored(page, 'refresh_token');
+    expect(key).not.toBeNull();
+
+    // The access token runs out while the page is open; logout must not renew first (it would replace the key)
+    let renewals = 0;
+    await page.route(`**${REFRESH}`, (route) => {
+      renewals += 1;
+      return route.abort();
+    });
+    const token = expired((await stored(page, 'auth_token')) ?? '');
+    await page.evaluate((t) => localStorage.setItem('auth_token', t), token);
+
+    const loggedOut = page.waitForResponse((r) => r.url().endsWith('/api/v1/auth/logout'));
+    await page.getByTestId('user-menu').click();
+    await page.getByRole('menuitem', { name: 'Logout' }).click();
+    const res = await loggedOut;
+    expect(res.status()).toBe(200);
+    expect(res.request().postDataJSON()).toEqual({ refresh_token: key });
+    await expect(page).toHaveURL(/\/auth\/login$/);
+    expect(renewals).toBe(0);
+
+    const refresh = await anon.post(REFRESH, { data: { refresh_token: key } });
+    expect(refresh.status()).toBe(401);
+    expect((await refresh.json()).message).toBe('Session ended');
+  });
+
+  test('two open tabs renew once between them, and the stored key still works', async ({ page, context, anon }) => {
+    await signIn(page, '/auth/login', env.EMAIL, env.PASSWORD);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    const second = await context.newPage();
+    await second.goto('/dashboard');
+    await expect(second.getByTestId('user-menu')).toBeVisible();
+    await Promise.all([page.waitForLoadState('networkidle'), second.waitForLoadState('networkidle')]);
+
+    const renewals: number[] = [];
+    context.on('response', (r) => {
+      if (r.url().endsWith(REFRESH)) renewals.push(r.status());
+    });
+    const token = expired((await stored(page, 'auth_token')) ?? '');
+    await page.evaluate((t) => localStorage.setItem('auth_token', t), token); // both tabs share storage
+    await Promise.all([page.reload(), second.reload()]);
+
+    await expect(page.getByTestId('user-menu')).toBeVisible();
+    await expect(second.getByTestId('user-menu')).toBeVisible();
+    await Promise.all([page.waitForLoadState('networkidle'), second.waitForLoadState('networkidle')]);
+    expect(renewals).toEqual([200]);
+
+    const res = await anon.post(REFRESH, { data: { refresh_token: await stored(page, 'refresh_token') } });
+    expect(res.status()).toBe(200);
+  });
 });

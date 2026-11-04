@@ -62,4 +62,41 @@ test.describe('portal vs staff login', () => {
     await page.goto('/');
     await expect(page).toHaveURL(/\/auth\/login$/);
   });
+
+  test('a signed-in patient opening /dashboard or / is taken to the portal', async ({ page }) => {
+    const login = new LoginPage(page, '/portal/login');
+    await login.goto();
+    await login.login(DEMO_PATIENT.email, DEMO_PATIENT.password);
+    await expect(page).toHaveURL(/\/portal$/);
+    await page.goto('/dashboard');
+    await expect(page).toHaveURL(/\/portal$/);
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/portal$/);
+  });
+
+  test('signed-in staff opening / are taken to the dashboard', async ({ page }) => {
+    const login = new LoginPage(page, '/auth/login');
+    await login.goto();
+    await login.login(env.EMAIL, env.PASSWORD);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/dashboard$/);
+  });
+
+  test('a patient whose token is no longer accepted on /portal is sent to the patient sign-in', async ({ page }) => {
+    const login = new LoginPage(page, '/portal/login');
+    await login.goto();
+    await login.login(DEMO_PATIENT.email, DEMO_PATIENT.password);
+    await expect(page).toHaveURL(/\/portal$/);
+    // A token the API refuses (401), and no refresh key to renew it with; set in the new page only
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('e2e_bad_token')) return;
+      sessionStorage.setItem('e2e_bad_token', '1');
+      localStorage.setItem('auth_token', 'not-a-valid-token');
+      localStorage.removeItem('refresh_token');
+    });
+    await page.reload();
+    await expect(page).toHaveURL(/\/portal\/login$/);
+    expect(await page.evaluate(() => localStorage.getItem('auth_token'))).toBeNull();
+  });
 });
