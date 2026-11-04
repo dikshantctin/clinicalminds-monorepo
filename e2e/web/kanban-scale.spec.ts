@@ -106,7 +106,7 @@ test.describe('task board with many cards', () => {
     await expect.poll(async () => (await inProgress()).length).toBe(0);
   });
 
-  test('opening the board runs no follow-up sync; Refresh follow-ups reloads it', async ({ page }) => {
+  test('opening the board runs no follow-up sync and loads it once', async ({ page }) => {
     const syncs: string[] = [];
     const boardLoads: string[] = [];
     page.on('request', (req) => {
@@ -123,12 +123,7 @@ test.describe('task board with many cards', () => {
     await page.waitForTimeout(1_500);
     expect(syncs).toEqual([]);
     expect(boardLoads).toHaveLength(1);
-
-    // The button syncs on demand and reloads the board, which may be older than the worker's last run
-    const synced = page.waitForResponse((r) => r.url().endsWith('/api/v1/kanban/followups/sync'));
-    await page.getByTestId('followup-refresh').click();
-    expect((await synced).status()).toBe(200);
-    await expect(page.getByTestId('followup-summary')).toBeVisible();
-    await expect.poll(() => boardLoads.length).toBe(2);
+    // follow-ups are worked on their own page now; the board has no follow-up controls
+    await expect(page.getByTestId('followup-refresh')).toHaveCount(0);
   });
 });
