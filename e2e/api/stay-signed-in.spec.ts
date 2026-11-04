@@ -4,7 +4,8 @@ import type { APIRequestContext } from '@playwright/test';
 
 /**
  * "Stay signed in": login hands out a refresh key; POST /auth/session/refresh swaps it for a new key and a
- * fresh 1-hour access token; logout ends the sign-in. Limits: 24 h unticked, ticked staff 7 d / patient 30 d.
+ * fresh 1-hour access token; logout ends the sign-in. The key just replaced, shown again within 5 min
+ * (a lost response), is rotated again. Limits: 24 h unticked, ticked staff 7 d / patient 30 d.
  * Each test signs in on its own, so no sign-in is shared between tests.
  */
 const REFRESH = '/api/v1/auth/session/refresh';
@@ -66,13 +67,26 @@ test.describe('stay signed in — POST /auth/session/refresh', () => {
     expect((await me(anon, next.access_token, first.tenant.id)).status()).toBe(200);
   });
 
-  test('the replaced key, shown again straight away, answers 409 and the sign-in lives on', async ({ anon }) => {
+  test('the replaced key, shown again straight away (lost response), gets a fresh working key', async ({ anon }) => {
     const first = await signIn(anon);
-    const next = await (await anon.post(REFRESH, { data: { refresh_token: first.refresh_token } })).json();
+    const lost = await anon.post(REFRESH, { data: { refresh_token: first.refresh_token } });
+    expect(lost.status()).toBe(200); // the device never received this answer
     const again = await anon.post(REFRESH, { data: { refresh_token: first.refresh_token } });
-    expect(again.status()).toBe(409);
-    expect((await again.json()).message).toBe('Session refreshed elsewhere');
+    expect(again.status()).toBe(200);
+    const next = await again.json();
+    expect(next.refresh_token).not.toBe((await lost.json()).refresh_token);
+    expect((await me(anon, next.access_token, first.tenant.id)).status()).toBe(200);
     expect((await anon.post(REFRESH, { data: { refresh_token: next.refresh_token } })).status()).toBe(200);
+  });
+
+  test('a key two rotations old is refused; the current key still works', async ({ anon }) => {
+    const first = await signIn(anon);
+    const second = await (await anon.post(REFRESH, { data: { refresh_token: first.refresh_token } })).json();
+    const third = await (await anon.post(REFRESH, { data: { refresh_token: second.refresh_token } })).json();
+    const stale = await anon.post(REFRESH, { data: { refresh_token: first.refresh_token } });
+    expect(stale.status()).toBe(401);
+    expect((await stale.json()).message).toBe('Session ended');
+    expect((await anon.post(REFRESH, { data: { refresh_token: third.refresh_token } })).status()).toBe(200);
   });
 
   test('after logout, the refresh key is refused', async ({ anon }) => {
