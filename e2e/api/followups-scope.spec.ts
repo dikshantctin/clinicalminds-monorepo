@@ -17,6 +17,7 @@ import { E2E_CLINIC, deleteClinic } from '../src/clinics';
  * The director sees all four.
  */
 const PASSWORD = 'Password123!';
+const FROZEN = "A follow-up card's type and patient can't be changed, and no card can become a follow-up card";
 const PHONE = '+919876543211'; // VERIFICATION_TEST_PHONES: onboarding skips phone.email
 
 type Who = 'director' | 'therapist' | 'psych' | 'intern' | 'support';
@@ -166,6 +167,43 @@ test.describe('follow-up cards are scoped to the clinician', () => {
     expect((await t.get(`/api/v1/kanban/tasks/${cards.seen}/comments`)).status()).toBe(200);
     expect((await as.psych.ctx.get(card)).status()).toBe(200);
     expect((await as.director.ctx.get(card)).status()).toBe(200);
+  });
+
+  test('a card cannot be turned into or out of a follow-up card', async () => {
+    // a follow-up card whose type changed would leave the scope, showing its title (the patient's name) to all staff
+    const out = await as.therapist.ctx.put(`/api/v1/kanban/tasks/${cards.mine}`, { data: { task_type: 'other' } });
+    expect(out.status(), await out.text()).toBe(422);
+    expect((await out.json()).message).toBe(FROZEN);
+    const byDirector = await as.director.ctx.put(`/api/v1/kanban/tasks/${cards.mine}`, { data: { task_type: 'other' } });
+    expect(byDirector.status(), await byDirector.text()).toBe(422);
+    expect((await ok<{ task_type: string }>(await as.director.ctx.get(`/api/v1/kanban/tasks/${cards.mine}`))).task_type).toBe('patient_followup');
+
+    const board = await ok<{ id: string }>(await as.director.ctx.post('/api/v1/kanban/boards', { data: { name: `${slug} plain` } }));
+    const plain = await ok<{ id: string }>(await as.director.ctx.post('/api/v1/kanban/tasks', { data: { board_id: board.id, title: 'Plain card' } }));
+    const into = await as.director.ctx.put(`/api/v1/kanban/tasks/${plain.id}`, { data: { task_type: 'patient_followup' } });
+    expect(into.status(), await into.text()).toBe(422);
+    const made = await as.therapist.ctx.post('/api/v1/kanban/tasks', {
+      data: { board_id: board.id, title: 'Hand-made follow-up', task_type: 'patient_followup', related_patient_id: patients.theirs },
+    });
+    expect(made.status(), await made.text()).toBe(422);
+    expect((await made.json()).message).toBe(FROZEN);
+
+    // the patient can't be swapped or cleared either (the scope keys off it)
+    for (const related_patient_id of [patients.theirs, null]) {
+      const res = await as.director.ctx.put(`/api/v1/kanban/tasks/${cards.mine}`, { data: { related_patient_id } });
+      expect(res.status(), await res.text()).toBe(422);
+      expect((await res.json()).message).toBe(FROZEN);
+    }
+    // unchanged values are fine
+    const same = await as.director.ctx.put(`/api/v1/kanban/tasks/${cards.mine}`, {
+      data: { task_type: 'patient_followup', related_patient_id: patients.mine },
+    });
+    expect(same.status(), await same.text()).toBe(200);
+
+    // and after every attempt the card is still out of reach of an unrelated clinician
+    expect((await as.intern.ctx.get(`/api/v1/kanban/tasks/${cards.mine}`)).status()).toBe(404);
+    const list = await ok<{ tasks: Card[] }>(await as.intern.ctx.get('/api/v1/kanban/tasks', { params: { board_id: queue } }));
+    expect(ids(list.tasks)).toEqual(expected('intern'));
   });
 
   test('dashboard/stats, the overview tile and /patients/stats count only what the caller may see', async () => {
