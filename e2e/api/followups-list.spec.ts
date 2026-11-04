@@ -1,5 +1,5 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { uniq } from '../src/env';
+import { DEMO_PATIENT, uniq } from '../src/env';
 import { bookSession } from '../src/sessions';
 
 /**
@@ -105,15 +105,32 @@ test.describe('follow-ups list', () => {
     const risk = (await list(api, { reason: 'risk_flag' })).items[0] as Item;
     const assigned = await api.put(`/api/v1/kanban/tasks/${risk.id}`, { data: { assigned_to_user: me.id } });
     expect(assigned.status(), await assigned.text()).toBe(200);
+    const missed = (await list(api, { reason: 'missed_session' })).items[0] as Item;
+    // the sync may have assigned the session's clinician; make the other card someone else's (nobody's)
+    const unassigned = await api.put(`/api/v1/kanban/tasks/${missed.id}`, { data: { assigned_to_user: null } });
+    expect(unassigned.status(), await unassigned.text()).toBe(200);
     const mine = await list(api, { assigned_to_user: me.id });
-    expect(mine.items.map((i: Item) => i.id)).toContain(risk.id);
-    expect(mine.items.every((i: Item & { assigned_to_user: string }) => i.assigned_to_user === me.id)).toBe(true);
+    expect(mine.items.map((i: Item) => i.id)).toEqual([risk.id]);
+    expect(mine.total).toBe(1);
   });
 
   test('bad paging or reason → 422', async ({ api }) => {
     expect((await api.get('/api/v1/kanban/followups', { params: { per_page: 101 } })).status()).toBe(422);
     expect((await api.get('/api/v1/kanban/followups', { params: { page: 0 } })).status()).toBe(422);
     expect((await api.get('/api/v1/kanban/followups', { params: { reason: 'bogus' } })).status()).toBe(422);
+  });
+
+  test('no token → 401; PATIENT → 403', async ({ anon }) => {
+    expect((await anon.get('/api/v1/kanban/followups', { params: { per_page: 1 } })).status()).toBe(401);
+    // a patient signs in through the portal login (audience "patient")
+    const login = await anon.post('/api/v1/auth/login', { data: { ...DEMO_PATIENT, audience: 'patient' } });
+    expect(login.status(), await login.text()).toBe(200);
+    const { access_token, tenant } = await login.json();
+    const res = await anon.get('/api/v1/kanban/followups', {
+      params: { reason: 'risk_flag' },
+      headers: { Authorization: `Bearer ${access_token}`, 'X-Tenant-ID': tenant.id },
+    });
+    expect(res.status(), await res.text()).toBe(403);
   });
 
   test('the board list hides the auto Follow-up queue unless asked for it', async ({ api }) => {
