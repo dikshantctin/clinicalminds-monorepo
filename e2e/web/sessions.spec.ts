@@ -55,6 +55,33 @@ test.describe('sessions UI', () => {
     }
   });
 
+  test('a session that has not started offers no No-show and no attended / no-show outcome (the API would answer 409)', async ({ page, api }) => {
+    const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('NotYet'), last_name: 'Patient' } })).json();
+    try {
+      const session = await (
+        await bookSession(api, { patient_id: patient.id, scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString() })
+      ).json();
+      await page.goto('/dashboard/sessions');
+      await page.getByRole('searchbox', { name: 'Search sessions' }).fill(patient.first_name);
+      const row = page.locator('tr', { hasText: patient.first_name });
+      await expect(row.getByTestId('session-cancel')).toBeVisible();
+      await expect(row.getByTestId('session-no-show')).toHaveCount(0);
+
+      await page.goto(`/dashboard/sessions/${session.id}`);
+      await expect(page.getByTestId('session-cancel')).toBeVisible();
+      await expect(page.getByTestId('session-no-show')).toHaveCount(0);
+      const outcomes = page.getByTestId('session-outcome-select').locator('option');
+      await expect(outcomes).toHaveText(['Choose an outcome', 'Late cancelled by patient', 'Cancelled by patient', 'Cancelled by clinic', 'Rescheduled']);
+
+      await backdate(api, session.id); // its time has come: both are offered
+      await page.reload();
+      await expect(page.getByTestId('session-no-show')).toBeVisible();
+      await expect(page.getByTestId('session-outcome-select').locator('option', { hasText: 'Attended' })).toHaveCount(1);
+    } finally {
+      await api.delete(`/api/v1/patients/${patient.id}`);
+    }
+  });
+
   test('mark a session no-show from the list, then record a cash payment on it', async ({ page, api }) => {
     const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('NoShowUI'), last_name: 'Patient' } })).json();
     try {
