@@ -1,6 +1,7 @@
 import { test, expect, requireApi, requireAuth, requireWeb } from '../src/fixtures';
 import { LoginPage } from '../src/pages/login.page';
-import { DEMO_PATIENT } from '../src/env';
+import { DEMO_PATIENT, uniq } from '../src/env';
+import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
 
 /** Phone width (iPhone 12-15). Nothing in the app shell may scroll sideways at this size. */
 const PHONE = { width: 390, height: 844 };
@@ -77,19 +78,27 @@ test.describe('public booking at 390 px', () => {
   requireApi();
   requireAuth();
   test.use({ viewport: PHONE, storageState: { cookies: [], origins: [] } });
+  const created: string[] = [];
+  test.afterEach(async ({ api }) => cleanupServices(api, created));
 
   test('the booking page does not scroll sideways while choosing a service, clinician, day and slot', async ({
     page,
+    api,
     auth,
   }) => {
+    // Its own free service with the demo clinicians (CI starts from an empty catalog)
+    const service = await createService(api, created, { name: uniq('Phone width consult'), price: 0 });
+    await assignDemoClinicians(api, service.id);
+
     await page.goto(`/book/${auth.firmCode}`);
     await expect(page.getByTestId('booking-page')).toBeVisible();
     expect(await pageWidth(page)).toBeLessThanOrEqual(PHONE.width);
 
-    await page.locator('[data-testid^="service-"]').first().click();
-    await page.getByRole('radio').first().click();
-    await page.getByTestId('booking-date').fill(new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10));
-    await expect(page.getByTestId('booking-slots')).toBeVisible();
+    await page.getByTestId(`service-${service.id}`).click();
+    await page.getByRole('radio', { name: /Jane Doe/ }).click();
+    const day = new Date(Date.now() + 2 * 86_400_000);
+    await page.getByTestId('booking-date').fill(day.toISOString().slice(0, 10));
+    await expect(page.getByTestId('booking-slots').getByRole('radio').first()).toBeVisible({ timeout: 15_000 });
     expect(await pageWidth(page)).toBeLessThanOrEqual(PHONE.width);
   });
 });
@@ -99,7 +108,32 @@ test.describe('staff pages at 390 px', () => {
   requireAuth();
   test.use({ viewport: PHONE });
 
-  for (const path of ['/dashboard/patients', '/dashboard/sessions', '/dashboard/tasks', '/dashboard/follow-ups']) {
+  test('the patients list does not scroll sideways, even when its table is wider than the screen', async ({ page }) => {
+    // Layout input under control: the real list plus one patient with a long unbroken name, which makes the table
+    // wider than the phone so it scrolls inside its card. Nothing in it may widen the page (its screen-reader-only
+    // "Actions" header used to, by 3 px with CI's data).
+    const first = 'Averyveryverylongunbrokenfirstname';
+    await page.route(/\/api\/v1\/patients\/?\?/, async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      body.patients = [{ ...body.patients[0], id: '00000000-0000-4000-8000-0000000000aa', first_name: first }, ...body.patients];
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.goto('/dashboard/patients');
+    await expect(page.getByRole('table').getByText(first)).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    expect(await page.getByRole('table').evaluate((t) => t.getBoundingClientRect().width)).toBeGreaterThan(PHONE.width);
+    expect(await pageWidth(page)).toBeLessThanOrEqual(PHONE.width);
+  });
+
+  test('/dashboard/patients does not scroll sideways', async ({ page }) => {
+    await page.goto('/dashboard/patients');
+    await expect(page.getByTestId('user-menu')).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    expect(await pageWidth(page)).toBeLessThanOrEqual(PHONE.width);
+  });
+
+  for (const path of ['/dashboard/sessions', '/dashboard/tasks', '/dashboard/follow-ups']) {
     test(`${path} does not scroll sideways`, async ({ page }) => {
       await page.goto(path);
       await expect(page.getByTestId('user-menu')).toBeVisible();
