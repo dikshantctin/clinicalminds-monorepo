@@ -16,7 +16,7 @@ test.describe('installable app: manifest and icons', () => {
     expect(m.start_url).toBe('/');
     expect(m.scope).toBe('/');
     expect(m.display).toBe('standalone');
-    expect(m.orientation).toBe('portrait');
+    expect(m.orientation).toBe('any'); // never locked: staff use tablets in landscape
     expect(m.theme_color).toBe('#2563eb');
     expect(m.background_color).toBe('#ffffff');
   });
