@@ -36,7 +36,7 @@ test.describe('task dialog: comments with mentions, and history', () => {
       expect((await api.put(`/api/v1/kanban/tasks/${task.id}`, { data: { status: 'in_progress' } })).status()).toBe(200);
 
       await page.goto('/dashboard/tasks');
-      await page.getByRole('combobox', { name: 'Board' }).selectOption(board.id);
+      await page.getByTestId('board-select').selectOption(board.id);
       await page.getByTestId('task-card').filter({ hasText: title }).getByRole('button', { name: title }).click();
       const dialog = page.getByRole('dialog', { name: title });
       await expect(dialog.getByTestId('task-history')).toContainText('Demo Admin moved to In progress');
