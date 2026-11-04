@@ -104,7 +104,8 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        THERAPIST 403 on writes; search + skip/limit totals; deactivated → gone from public booking;
                        structured location address round-trips)
 web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
-                       staff-invite (the Invite staff dialog validates and sends, role select, the same answer for another clinic's account,
+                       staff-invite (the Invite staff dialog validates and sends, role select staged behind a confirm (cancel sends nothing),
+                       a director is offered no ADMIN and cannot edit or remove an ADMIN row, the same answer for another clinic's account,
                        the invitee's /auth/set-password → /auth/login → /auth/verify, Remove; the tab for a
                        CLINICAL_DIRECTOR and not for a THERAPIST),
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),

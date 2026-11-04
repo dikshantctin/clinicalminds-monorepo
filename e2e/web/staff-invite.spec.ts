@@ -54,6 +54,7 @@ test.describe('staff invite (browser)', () => {
       await expect(page.getByTestId(`staff-role-${id}`)).toHaveValue('THERAPIST');
 
       await page.getByTestId(`staff-role-${id}`).selectOption('PSYCHOLOGIST');
+      await page.getByTestId('staff-role-dialog-confirm').click();
       await expect(page.getByText('Tara Pist is now Psychologist')).toBeVisible();
       const after = await (await admin.ctx.get(`/api/v1/tenants/${admin.tenant.id}/users`)).json();
       expect(after.find((u: { id: string }) => u.id === id).role).toBe('PSYCHOLOGIST');
@@ -104,6 +105,99 @@ test.describe('staff invite (browser)', () => {
       await admin.ctx.dispose();
       await deleteClinic(clinic.owner);
       await deleteClinic(other.owner);
+    }
+  });
+
+  test('a role change waits for the confirm: cancel sends nothing, confirm changes it', async ({ anon, browser }) => {
+    const therapist = `${uniq('ther')}@example.com`.toLowerCase();
+    const clinic = await onboardClinic(anon, { team: [{ email: therapist, role: 'THERAPIST' }] });
+    const admin = await loginAs(clinic.owner);
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const roleOf = async (id: string) =>
+      (await (await admin.ctx.get(`/api/v1/tenants/${admin.tenant.id}/users`)).json()).find((u: { id: string }) => u.id === id).role;
+    try {
+      const listed = await (await admin.ctx.get(`/api/v1/tenants/${admin.tenant.id}/users`)).json();
+      const id: string = listed.find((u: { email: string }) => u.email === therapist).id;
+      const page = await context.newPage();
+      const roleWrites: string[] = [];
+      page.on('request', (r) => {
+        if (r.method() === 'PUT' && r.url().endsWith(`/users/${id}/role`)) roleWrites.push(r.url());
+      });
+      await page.goto('/auth/login');
+      await new LoginPage(page).login(clinic.owner, 'Password123!');
+      await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
+      await page.goto('/dashboard/settings');
+      await page.getByRole('tab', { name: 'Users & Permissions' }).click();
+      const select = page.getByTestId(`staff-role-${id}`);
+      await expect(select).toHaveValue('THERAPIST');
+
+      // (a) changing the select only stages it; cancelling restores the old value and sends nothing
+      await select.selectOption('INTERN');
+      const dialog = page.getByTestId('staff-role-dialog');
+      await expect(dialog).toContainText('Change Team THERAPIST from Therapist to Intern?');
+      await page.getByTestId('staff-role-dialog-cancel').click();
+      await expect(dialog).toBeHidden();
+      await expect(select).toHaveValue('THERAPIST');
+      expect(roleWrites).toEqual([]);
+      expect(await roleOf(id)).toBe('THERAPIST');
+
+      // (b) confirming sends exactly one change
+      await select.selectOption('PSYCHOLOGIST');
+      await page.getByTestId('staff-role-dialog-confirm').click();
+      await expect(page.getByText('Team THERAPIST is now Psychologist')).toBeVisible();
+      await expect(dialog).toBeHidden();
+      await expect(select).toHaveValue('PSYCHOLOGIST');
+      expect(roleWrites).toHaveLength(1);
+      expect(await roleOf(id)).toBe('PSYCHOLOGIST');
+    } finally {
+      await context.close();
+      await admin.ctx.dispose();
+      await deleteClinic(clinic.owner);
+    }
+  });
+
+  test('a CLINICAL_DIRECTOR is offered no ADMIN role and cannot edit or remove an ADMIN', async ({ anon, browser }) => {
+    const adminEmail = `${uniq('adm')}@example.com`.toLowerCase();
+    const therapist = `${uniq('ther')}@example.com`.toLowerCase();
+    const clinic = await onboardClinic(anon, {
+      ownerRole: 'CLINICAL_DIRECTOR',
+      team: [{ email: adminEmail, role: 'ADMIN' }, { email: therapist, role: 'THERAPIST' }],
+    });
+    const director = await loginAs(clinic.owner);
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    try {
+      const listed = await (await director.ctx.get(`/api/v1/tenants/${director.tenant.id}/users`)).json();
+      const idOf = (email: string): string => listed.find((u: { email: string }) => u.email === email).id;
+      const adminId = idOf(adminEmail);
+      const therapistId = idOf(therapist);
+      const page = await context.newPage();
+      await page.goto('/auth/login');
+      await new LoginPage(page).login(clinic.owner, 'Password123!');
+      await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
+      await page.goto('/dashboard/settings');
+      await page.getByRole('tab', { name: 'Users & Permissions' }).click();
+
+      // the ADMIN row: role as text, no select, no Remove
+      await expect(page.getByTestId(`staff-role-text-${adminId}`)).toHaveText('Admin');
+      await expect(page.getByTestId(`staff-role-${adminId}`)).toHaveCount(0);
+      await expect(page.getByTestId(`remove-staff-${adminId}`)).toHaveCount(0);
+
+      // the THERAPIST row stays editable, without ADMIN among its options
+      const select = page.getByTestId(`staff-role-${therapistId}`);
+      await expect(select).toHaveValue('THERAPIST');
+      await expect(select.locator('option[value="ADMIN"]')).toHaveCount(0);
+      await expect(select.locator('option[value="CLINICAL_DIRECTOR"]')).toHaveCount(1);
+      await expect(page.getByTestId(`remove-staff-${therapistId}`)).toBeVisible();
+
+      // the invite dialog offers no ADMIN either
+      await page.getByTestId('invite-staff-open').click();
+      const role = page.getByTestId('invite-staff-dialog').getByTestId('invite-staff-role');
+      await expect(role.locator('option[value="ADMIN"]')).toHaveCount(0);
+      await expect(role.locator('option[value="CLINICAL_DIRECTOR"]')).toHaveCount(1);
+    } finally {
+      await context.close();
+      await director.ctx.dispose();
+      await deleteClinic(clinic.owner);
     }
   });
 
