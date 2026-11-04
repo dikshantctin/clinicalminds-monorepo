@@ -2,6 +2,7 @@ import { APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 import { demoClinicianIds } from '../src/catalog';
+import { openDay } from '../src/days';
 
 /**
  * "Any available" clinician (practitioner_id = "any", or left out): the slots are the union of the free
@@ -14,11 +15,7 @@ const TEST_PHONE = '+919876543210'; // VERIFICATION_TEST_PHONES: no phone.email 
 const TAKEN = 'That slot is no longer available';
 
 /** A day 10–29 days out: the other booking specs use fixed days +2…+9, so they never share our slots. */
-const someDay = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 10 + Math.floor(Math.random() * 20));
-  return d.toISOString().slice(0, 10);
-};
+const someDay = () => openDay(10 + Math.floor(Math.random() * 20)); // clinics are closed on Sunday
 
 async function serviceFor(api: APIRequestContext, clinicianIds: string[]) {
   const res = await api.post('/api/v1/catalog/services', {
