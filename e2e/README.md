@@ -110,7 +110,9 @@ web/                   auth, guards, navigation, patients, sessions, tasks-teams
                        icon link resolves, no "AI/crisis" wording, old /site.webmanifest gone),
                        pwa-offline (service worker registered on the production build; offline the sign-in still
                        opens with the offline notice; API responses never come from the service worker; the cache holds
-                       only static app files before and after logout). The web project blocks service workers;
+                       only static app files before and after logout),
+                       pwa-update (a new version is offered in every tab; Reload switches only its own tab, an
+                       unsaved form in another tab survives; Later dismisses). The web project blocks service workers;
                        only these specs allow them.
 ```
 

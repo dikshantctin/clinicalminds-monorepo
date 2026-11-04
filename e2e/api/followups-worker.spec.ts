@@ -32,7 +32,7 @@ test.describe('follow-up queue background sync', () => {
   });
 
   const cardFor = async (api: import('@playwright/test').APIRequestContext) => {
-    const queue = await (await api.get('/api/v1/kanban/followups')).json();
+    const queue = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: sessionId } })).json();
     return (queue.items as Card[]).find((t) => t.related_session_id === sessionId) ?? null;
   };
 
