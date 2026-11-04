@@ -28,7 +28,10 @@ test.describe('schedule form: book with a chosen clinician', () => {
       await expect(picker).toHaveValue(jane.user.id);
       // only bookable clinicians are offered: no admin, intern or front desk
       await expect(picker.locator('option', { hasText: 'Ira Intern' })).toHaveCount(0);
+      await expect(page.getByTestId('session-assigned-warning')).toHaveCount(0);
       await picker.selectOption(smith.user.id);
+      // the patient stays Jane's: the form says so
+      await expect(page.getByTestId('session-assigned-warning')).toHaveText(/^Assigned to Jane .+\. This session goes to .+Smith; the patient stays with Jane .+\.$/);
       await page.getByLabel('Date & Time').fill(`${day}T12:00`);
       await page.getByRole('button', { name: 'Schedule Session' }).click();
       await expect(page).toHaveURL(/\/dashboard\/sessions$/);
@@ -36,6 +39,30 @@ test.describe('schedule form: book with a chosen clinician', () => {
       const list = await (await api.get('/api/v1/sessions/', { params: { patient_id: patient.id } })).json();
       expect(list.sessions).toHaveLength(1);
       expect((await (await api.get(`/api/v1/sessions/${list.sessions[0].id}`)).json()).therapist_id).toBe(smith.user.id);
+    } finally {
+      await api.delete(`/api/v1/patients/${patient.id}`);
+    }
+  });
+
+  test('an admin who picks "Me" books their own calendar, not the patient’s clinician', async ({ page, api, auth }) => {
+    const jane = await idOf(DEMO_THERAPIST);
+    const day = uniqueDay();
+    const patient = await (
+      await api.post('/api/v1/patients/', { data: { first_name: uniq('PickMe'), last_name: 'Patient', assigned_therapist_id: jane.user.id } })
+    ).json();
+    try {
+      await page.goto(`/dashboard/sessions/new?patient_id=${patient.id}`);
+      const picker = page.getByTestId('session-clinician');
+      await expect(picker).toHaveValue(jane.user.id);
+      await picker.selectOption({ label: 'Me' });
+      await expect(picker).toHaveValue('me');
+      await page.getByLabel('Date & Time').fill(`${day}T13:00`);
+      await page.getByRole('button', { name: 'Schedule Session' }).click();
+      await expect(page).toHaveURL(/\/dashboard\/sessions$/);
+
+      const list = await (await api.get('/api/v1/sessions/', { params: { patient_id: patient.id } })).json();
+      expect(list.sessions).toHaveLength(1);
+      expect((await (await api.get(`/api/v1/sessions/${list.sessions[0].id}`)).json()).therapist_id).toBe(auth.user!.id);
     } finally {
       await api.delete(`/api/v1/patients/${patient.id}`);
     }
