@@ -97,7 +97,7 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        catalog (services/locations: 422 for blank name, duration <= 0, negative or 3-decimal price;
                        THERAPIST 403 on writes; search + skip/limit totals; deactivated → gone from public booking;
                        structured location address round-trips)
-web/                   auth, guards, navigation, patients, sessions, tasks-teams, misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
+web/                   auth, guards, navigation, patients, sessions, tasks-teams, task-assignee-filter (Assignee filter by any staff member, exact card counts, no-match state), misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
