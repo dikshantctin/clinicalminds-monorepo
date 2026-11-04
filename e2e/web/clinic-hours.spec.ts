@@ -51,6 +51,11 @@ test.describe('Settings → Clinic hours', () => {
       await page.getByTestId('clinic-hours-holiday-name').fill('Republic Day');
       await page.getByTestId('clinic-hours-holiday-add').click();
       await expect(page.getByTestId('clinic-hours-holiday-0')).toContainText('Republic Day');
+      await page.getByTestId('clinic-hours-holiday-date').fill('2027-01-26'); // the same date again
+      await expect(page.getByText('This date is already listed')).toBeVisible();
+      await expect(page.getByTestId('clinic-hours-holiday-add')).toBeDisabled();
+      await page.getByTestId('clinic-hours-holiday-date').fill('');
+      await expect(page.getByTestId('clinic-hours-timezone')).toHaveText('Asia/Kolkata');
       await page.getByTestId('clinic-hours-save').click();
       await expect(page.getByText('Clinic hours saved')).toBeVisible();
 

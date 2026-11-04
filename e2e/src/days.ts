@@ -5,7 +5,9 @@
 const ymd = (d: Date, tz: string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
 const isoWeekday = (day: string) => ((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7) + 1; // 1 = Monday … 7 = Sunday
 
-/** The `n`-th clinic-local day after today that is not a Sunday (n ≥ 1). Different n → different days, so
+/** The `n`-th clinic-local day after today that is not a Sunday (n ≥ 1). It assumes the clinic keeps the
+ * default open days (only Sunday closed) and lists no holidays: true for the demo clinic, which no spec
+ * changes (specs that change hours onboard their own clinic). Different n → different days, so
  * specs that book on their own day (day 2, day 3, …) still never share one. */
 export function openDay(n: number, tz = 'Asia/Kolkata'): string {
   let day = ymd(new Date(), tz);

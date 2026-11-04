@@ -1,6 +1,6 @@
 import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { env, DEMO_THERAPIST } from '../src/env';
+import { env, DEMO_THERAPIST, DEMO_PATIENT } from '../src/env';
 import { OwnClinic, deleteClinic, onboardOwnClinic } from '../src/clinics';
 import { nextWeekday } from '../src/days';
 
@@ -87,19 +87,42 @@ test.describe('clinic hours', () => {
     expect(res.status(), await res.text()).toBe(200);
   });
 
-  test('invalid hours → 422 and nothing changes', async () => {
+  test('the notes buffer keeps the time after a booked session free, and a slot leaves it before the next', async () => {
+    // saved hours from above: Mon–Fri 09:00–17:00, lunch 13:00–14:00, buffer 15
+    const thursday = nextWeekday(4, 3);
+    const patient = await (await clinic.api.post('/api/v1/patients/', { data: { first_name: 'Buffer', last_name: 'Patient' } })).json();
+    for (const [time, minutes] of [['09:00', 60], ['16:00', 50]] as const) {
+      const res = await clinic.api.post('/api/v1/sessions/', {
+        data: { patient_id: patient.id, scheduled_at: `${thursday}T${time}:00+05:30`, duration_minutes: minutes },
+      });
+      expect(res.status(), await res.text()).toBe(200);
+    }
+    // 09:00–10:00 + 15 → free from 10:15; a slot before 16:00 must end by 15:45
+    expect(await slots(thursday)).toEqual(['10:30', '11:00', '11:30', '12:00', '14:00', '14:30']);
+
+    const hours = await (await clinic.api.get('/api/v1/clinic-hours')).json();
+    expect((await clinic.api.put('/api/v1/clinic-hours', { data: { ...hours, buffer_minutes: 0 } })).status()).toBe(200);
+    expect(await slots(thursday)).toEqual(['10:00', '10:30', '11:00', '11:30', '12:00', '14:00', '14:30', '15:00']);
+  });
+
+  test('invalid hours → 422 with the rule that failed, and nothing changes', async () => {
     const before = await (await clinic.api.get('/api/v1/clinic-hours')).json();
-    const bad = [
-      { ...DEFAULTS, open: '18:00', close: '10:00' }, // closes before it opens
-      { ...DEFAULTS, breaks: [{ start: '09:00', end: '10:30' }] }, // break outside the hours
-      { ...DEFAULTS, breaks: [{ start: '14:00', end: '13:00' }] }, // break ends before it starts
-      { ...DEFAULTS, open_days: [0, 8] }, // weekdays are 1 (Monday) … 7 (Sunday)
-      { ...DEFAULTS, buffer_minutes: 120 }, // 0–60
-      { ...DEFAULTS, open: '9am' },
-      { ...DEFAULTS, holidays: [{ date: '2027-01-26', name: 'A' }, { date: '2027-01-26', name: 'B' }] }, // same day twice
+    const bad: [Record<string, unknown>, string][] = [
+      [{ ...DEFAULTS, open: '18:00', close: '10:00' }, 'The clinic must close after it opens'],
+      [{ ...DEFAULTS, breaks: [{ start: '09:00', end: '10:30' }] }, 'Each break must be inside the opening hours'],
+      [{ ...DEFAULTS, breaks: [{ start: '14:00', end: '13:00' }] }, 'Each break must end after it starts'],
+      [{ ...DEFAULTS, open_days: [0, 8] }, 'Open days are 1 (Monday) to 7 (Sunday)'],
+      [{ ...DEFAULTS, open_days: [] }, 'Pick at least one open day'],
+      [{ ...DEFAULTS, buffer_minutes: 120 }, 'The notes buffer is 0 to 60 minutes'],
+      [{ ...DEFAULTS, open: '9am' }, 'Times are HH:MM, for example 09:30'],
+      [{ ...DEFAULTS, breaks: [{ start: '1pm', end: '14:00' }] }, 'Times are HH:MM, for example 09:30'],
+      [{ ...DEFAULTS, holidays: [{ date: '2027-01-26', name: 'A' }, { date: '2027-01-26', name: 'B' }] }, 'Each holiday date can be listed once'],
+      [{ ...DEFAULTS, holidays: [{ date: '26/01/2027', name: 'A' }] }, 'Each holiday needs a date (YYYY-MM-DD) and a name of at most 100 characters'],
     ];
-    for (const body of bad) {
-      expect((await clinic.api.put('/api/v1/clinic-hours', { data: body })).status(), JSON.stringify(body)).toBe(422);
+    for (const [body, message] of bad) {
+      const res = await clinic.api.put('/api/v1/clinic-hours', { data: body });
+      expect(res.status(), JSON.stringify(body)).toBe(422);
+      expect((await res.json()).message, JSON.stringify(body)).toBe(message);
     }
     expect(await (await clinic.api.get('/api/v1/clinic-hours')).json()).toEqual(before);
   });
@@ -117,5 +140,13 @@ test.describe('clinic hours', () => {
       await jane.dispose();
     }
     expect((await anon.get('/api/v1/clinic-hours')).status()).toBe(401);
+  });
+
+  test('a patient cannot read the clinic hours (403)', async ({ anon }) => {
+    const login = await anon.post('/api/v1/auth/login', { data: { ...DEMO_PATIENT, audience: 'patient' } });
+    expect(login.status(), await login.text()).toBe(200);
+    const { access_token, tenant } = await login.json();
+    const res = await anon.get('/api/v1/clinic-hours', { headers: { Authorization: `Bearer ${access_token}`, 'X-Tenant-ID': tenant.id } });
+    expect(res.status()).toBe(403);
   });
 });
