@@ -80,7 +80,7 @@ test.describe('/api/v1/analytics/overview', () => {
       expect(swept.session_notes).toContain('Needs confirmation: not marked within 24 hours of the scheduled end');
 
       // and the follow-up queue keeps a "Missed session" card for it (it still needs a rebook call)
-      const queue = await (await api.get('/api/v1/kanban/followups')).json();
+      const queue = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: session.id } })).json();
       const card = queue.items.find((t: { related_session_id: string | null }) => t.related_session_id === session.id);
       expect(card, 'the missed-session card reminds the clinician to mark it').toEqual(expect.objectContaining({ reason: 'missed_session' }));
     } finally {
