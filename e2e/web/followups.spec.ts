@@ -77,6 +77,30 @@ test.describe('follow-ups page', () => {
     await expect(rowFor(page, patient.first_name)).toHaveCount(0);
   });
 
+  test('an overdue follow-up shows the Overdue badge; the Assignee filter picks one staff member', async ({ page, api }) => {
+    const me = await (await api.get('/api/v1/auth/me')).json();
+    const card = (await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: session.id } })).json()).items[0];
+    const put = (data: Record<string, unknown>) => api.put(`/api/v1/kanban/tasks/${card.id}`, { data });
+    await page.goto('/dashboard/follow-ups');
+    await page.getByRole('searchbox').fill(patient.first_name);
+    // the sync makes a missed-session card due tomorrow: not overdue yet
+    await expect(rowFor(page, patient.first_name)).toHaveCount(1);
+    await expect(rowFor(page, patient.first_name).getByTestId('task-overdue')).toHaveCount(0);
+
+    const updated = await put({ due_date: new Date(Date.now() - 3 * 24 * HOUR).toISOString(), assigned_to_user: me.id });
+    expect(updated.status(), await updated.text()).toBe(200);
+    await page.getByRole('button', { name: /Filters/ }).click();
+    await page.getByTestId('followup-filter-assignee').selectOption(me.id);
+    await expect(rowFor(page, patient.first_name).getByTestId('task-overdue')).toHaveText('Overdue');
+
+    const cleared = await put({ assigned_to_user: null });
+    expect(cleared.status(), await cleared.text()).toBe(200);
+    await page.getByTestId('followup-refresh').click();
+    await expect(rowFor(page, patient.first_name)).toHaveCount(0);
+    await page.getByTestId('followup-filter-assignee').selectOption('');
+    await expect(rowFor(page, patient.first_name)).toHaveCount(1);
+  });
+
   test('the Tasks board picker no longer offers the Follow-up queue; the overview tile links here', async ({ page }) => {
     await page.goto('/dashboard/tasks');
     const picker = page.getByRole('combobox', { name: 'Board' });
