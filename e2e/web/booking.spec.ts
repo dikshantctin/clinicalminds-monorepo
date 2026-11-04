@@ -99,6 +99,14 @@ test.describe('public booking page (/book/<firmCode>)', () => {
     const reference = (await page.getByTestId('booking-confirmation').innerText()).match(/Reference: ([0-9a-f-]{36})/)?.[1];
     expect(reference).toBeTruthy();
 
+    // PWA-4: once booked, the patient is offered the app (Chrome's install offer, faked)
+    await page.evaluate(() => {
+      const event = new Event('beforeinstallprompt', { cancelable: true }) as Event & { prompt: () => Promise<void> };
+      event.prompt = async () => {};
+      window.dispatchEvent(event);
+    });
+    await expect(page.getByTestId('install-app')).toBeVisible();
+
     // the clinic's sessions page (admin storage state) shows the booking link and the "Booked online" badge
     const clinic = await browser.newContext({ storageState: '.auth/state.json' });
     try {
