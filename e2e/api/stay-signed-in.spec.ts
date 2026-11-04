@@ -4,8 +4,9 @@ import type { APIRequestContext } from '@playwright/test';
 
 /**
  * "Stay signed in": login hands out a refresh key; POST /auth/session/refresh swaps it for a new key and a
- * fresh 1-hour access token; logout ends the sign-in. The key just replaced, shown again within 5 min
- * (a lost response), is rotated again. Limits: 24 h unticked, ticked staff 7 d / patient 30 d.
+ * fresh 1-hour access token; logout ends the sign-in, by key when the access token has expired. The key just
+ * replaced, shown again within 5 min (a lost response), is rotated again; any older key ends the sign-in.
+ * Limits: unticked staff 2 h idle / 12 h max, unticked patients 24 h; ticked staff 7 d / patients 30 d idle.
  * Each test signs in on its own, so no sign-in is shared between tests.
  */
 const REFRESH = '/api/v1/auth/session/refresh';
@@ -28,12 +29,17 @@ test.describe('stay signed in — login', () => {
   requireApi();
   requireAuth();
 
-  test('login without remember returns a refresh key and a 24 h sign-in', async ({ anon }) => {
+  test('staff login without remember returns a refresh key and a 2 h idle sign-in', async ({ anon }) => {
     const body = await signIn(anon);
     expect(typeof body.refresh_token).toBe('string');
-    expect(body.refresh_token.length).toBeGreaterThanOrEqual(64);
+    expect(body.refresh_token).toMatch(/^[0-9a-f]{32}\.[\w-]{64}$/);
+    expect(body.refresh_token.split('.')[0]).toBe(claims(body.access_token).sid.replace(/-/g, ''));
     expect(body.expires_in).toBe(3600);
-    expect(body.session_expires_in).toBe(86400);
+    expect(body.session_expires_in).toBe(7200);
+  });
+
+  test('patient login without remember gets a 24 h sign-in', async ({ anon }) => {
+    expect((await signIn(anon, { patient: true })).session_expires_in).toBe(86400);
   });
 
   test('staff login with remember gets a 7-day sign-in', async ({ anon }) => {
@@ -79,14 +85,42 @@ test.describe('stay signed in — POST /auth/session/refresh', () => {
     expect((await anon.post(REFRESH, { data: { refresh_token: next.refresh_token } })).status()).toBe(200);
   });
 
-  test('a key two rotations old is refused; the current key still works', async ({ anon }) => {
+  test('a key two rotations old ends the sign-in: the current key stops working too', async ({ anon }) => {
     const first = await signIn(anon);
     const second = await (await anon.post(REFRESH, { data: { refresh_token: first.refresh_token } })).json();
     const third = await (await anon.post(REFRESH, { data: { refresh_token: second.refresh_token } })).json();
     const stale = await anon.post(REFRESH, { data: { refresh_token: first.refresh_token } });
     expect(stale.status()).toBe(401);
     expect((await stale.json()).message).toBe('Session ended');
-    expect((await anon.post(REFRESH, { data: { refresh_token: third.refresh_token } })).status()).toBe(200);
+    const current = await anon.post(REFRESH, { data: { refresh_token: third.refresh_token } });
+    expect(current.status()).toBe(401);
+    expect((await current.json()).message).toBe('Session ended');
+  });
+
+  test('a forged secret for a real sign-in ends that sign-in', async ({ anon }) => {
+    const first = await signIn(anon);
+    const forged = `${first.refresh_token.split('.')[0]}.${'A'.repeat(64)}`;
+    expect((await anon.post(REFRESH, { data: { refresh_token: forged } })).status()).toBe(401);
+    expect((await anon.post(REFRESH, { data: { refresh_token: first.refresh_token } })).status()).toBe(401);
+  });
+
+  test('logout with only the refresh key (access token expired) ends the sign-in', async ({ anon }) => {
+    const first = await signIn(anon, { remember: true });
+    const out = await anon.post('/api/v1/auth/logout', {
+      headers: { Authorization: 'Bearer expired.or.garbage' },
+      data: { refresh_token: first.refresh_token },
+    });
+    expect(out.status()).toBe(200);
+    expect((await out.json()).message).toBe('Successfully logged out');
+    const res = await anon.post(REFRESH, { data: { refresh_token: first.refresh_token } });
+    expect(res.status()).toBe(401);
+    expect((await res.json()).message).toBe('Session ended');
+  });
+
+  test('logout with nothing is still 200 and ends nothing', async ({ anon }) => {
+    const first = await signIn(anon);
+    expect((await anon.post('/api/v1/auth/logout')).status()).toBe(200);
+    expect((await anon.post(REFRESH, { data: { refresh_token: first.refresh_token } })).status()).toBe(200);
   });
 
   test('after logout, the refresh key is refused', async ({ anon }) => {
