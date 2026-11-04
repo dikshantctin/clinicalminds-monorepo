@@ -40,8 +40,8 @@ test.describe('installable app: new version', () => {
     await reloaded;
     await expect(first.getByTestId('pwa-update')).toBeHidden();
 
-    // The other tab was not reloaded: its unsaved input is still there
-    await second.waitForTimeout(1500);
+    // The other tab was not reloaded: its unsaved input is still there, and it is told a new version took over
+    await expect(second.getByTestId('pwa-update')).toBeVisible();
     await expect(second.locator('#email')).toHaveValue('half-typed@example.com');
   });
 });
