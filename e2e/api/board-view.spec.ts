@@ -109,6 +109,12 @@ test.describe('/api/v1/kanban/boards/{id}/view', () => {
     expect(before.done_this_month).toBe(1); // the header counts don't follow the range
   });
 
+  test('Done lists the most recently completed card first', async ({ api }) => {
+    const earlier = await mk(api, { status: 'done' });
+    const later = await mk(api, { status: 'done' });
+    expect(cell(await view(api), 'done')!.tasks.map((t) => t.id)).toEqual([later.id, earlier.id]);
+  });
+
   test('a due range filters open columns by due date and counts the hidden no-due-date cards', async ({ api }) => {
     const day = 86_400_000;
     const inside = await mk(api, { status: 'todo', due_date: new Date(Date.now() + 2 * day).toISOString() });
