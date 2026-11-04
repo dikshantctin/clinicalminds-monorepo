@@ -1,6 +1,6 @@
-import type { APIRequestContext } from '@playwright/test';
+import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { uniq } from '../src/env';
+import { env, uniq, DEMO_THERAPIST } from '../src/env';
 
 /**
  * A move names the cards that will sit directly above (`before_id`) and below (`after_id`) the moved one.
@@ -110,6 +110,27 @@ test.describe('POST /kanban/tasks/{id}/move with neighbours', () => {
   test('without a token a move is 401', async ({ anon }) => {
     const res = await anon.post('/api/v1/kanban/tasks/00000000-0000-4000-8000-000000000000/move', { data: { status: 'todo' } });
     expect(res.status()).toBe(401);
+  });
+
+  test("a therapist moving a manager's card (not creator, not assignee) is 403 and moves nothing", async ({ api, anon }) => {
+    const board = await newBoard(api);
+    boards.push(board.id);
+    const [a, b] = [await newTask(api, board.id), await newTask(api, board.id)];
+    const login = await anon.post('/api/v1/auth/login', { data: DEMO_THERAPIST });
+    expect(login.status(), `demo therapist (setup_demo_data.py): ${await login.text()}`).toBe(200);
+    const therapist = await pwRequest.newContext({
+      baseURL: env.API_URL,
+      extraHTTPHeaders: { Authorization: `Bearer ${(await login.json()).access_token}` },
+    });
+    try {
+      const res = await move(therapist, b.id, { status: 'todo', after_id: a.id });
+      expect(res.status(), await res.text()).toBe(403);
+      expect((await res.json()).message).toBe('Only managers, the creator or the assignee can change this task');
+    } finally {
+      await therapist.dispose();
+    }
+    const now = await getTask(api, b.id);
+    expect([now.status, now.position, now.updated_at]).toEqual([b.status, b.position, b.updated_at]);
   });
 
   test('40 moves into the same shrinking gap keep the order (the column is renumbered when the gap runs out)', async ({ api }) => {

@@ -64,14 +64,14 @@ test.describe('task board drag and drop', () => {
 
   test('a card dropped on another card in its column takes that place, and the board is not reloaded', async ({ page, api }) => {
     const first = await getTask(api, ids[0]);
+    // Listening from before the drag: a reload fired from the move's onSuccess cannot slip past
     const reloads: string[] = [];
-    const moved = page.waitForResponse('**/api/v1/kanban/tasks/*/move');
-    await drag(page, card(page, titles[3]), card(page, titles[0]));
-    expect((await moved).status()).toBe(200);
-    // Listen only after the drop: the move returns the task, so nothing re-downloads the board
     page.on('request', (req) => {
       if (req.method() === 'GET' && /\/api\/v1\/kanban\/tasks(\?|$)/.test(req.url())) reloads.push(req.url());
     });
+    const moved = page.waitForResponse('**/api/v1/kanban/tasks/*/move');
+    await drag(page, card(page, titles[3]), card(page, titles[0]));
+    expect((await moved).status()).toBe(200);
 
     await expect(cell(page, 'unassigned', 'todo').getByTestId('task-card').first()).toContainText(titles[3]);
     const after = await getTask(api, ids[3]);
@@ -79,8 +79,34 @@ test.describe('task board drag and drop', () => {
     expect(after.position).toBeLessThan(first.position);
     // The card it landed on was not rewritten
     expect((await getTask(api, ids[0])).updated_at).toBe(first.updated_at);
-    await page.waitForTimeout(2_000);
+    // onSuccess (where a reload would be started) has run once its toast shows. A request the page sends after
+    // that is seen after any reload it started, since a page's requests are reported in the order sent.
+    await expect(page.getByText('Task moved successfully')).toBeVisible();
+    const sentinel = page.waitForRequest((req) => req.url().includes('e2e-sentinel'));
+    await page.evaluate(() => fetch('/favicon.ico?e2e-sentinel').catch(() => undefined));
+    await sentinel;
     expect(reloads).toEqual([]);
+  });
+
+  test("a drop next to cards that moved behind the page's back reloads the board", async ({ page, api }) => {
+    const move = (id: string, before_id: string, after_id: string) =>
+      api.post(`/api/v1/kanban/tasks/${id}/move`, { data: { status: 'todo', before_id, after_id } });
+    // Elsewhere: card 2 moves up within its gap, so the page's cached position for it is stale (same order)
+    expect((await move(ids[4], ids[1], ids[2])).status()).toBe(200);
+    expect((await move(ids[2], ids[1], ids[4])).status()).toBe(200);
+    expect((await move(ids[4], ids[3], ids[5])).status()).toBe(200);
+
+    // Card 3 dropped on card 2 lands between 1 and 2; the server's position is not the page's guess
+    const moved = page.waitForResponse('**/api/v1/kanban/tasks/*/move');
+    const reload = page.waitForRequest((req) => req.method() === 'GET' && /\/api\/v1\/kanban\/tasks(\?|$)/.test(req.url()));
+    await drag(page, card(page, titles[3]), card(page, titles[2]));
+    expect((await moved).status()).toBe(200);
+    await reload;
+
+    const order = (await Promise.all(ids.slice(0, 5).map((id) => getTask(api, id))))
+      .sort((m, n) => m.position - n.position)
+      .map((t) => t.id);
+    expect(order).toEqual([ids[0], ids[1], ids[3], ids[2], ids[4]]);
   });
 
   test('a card dropped in another team row is assigned to that team', async ({ page, api }) => {
