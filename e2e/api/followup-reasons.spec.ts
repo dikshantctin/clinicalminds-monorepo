@@ -19,7 +19,7 @@ const DAY = 24 * HOUR;
 
 async function cardsFor(api: APIRequestContext, patientId: string): Promise<Card[]> {
   expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200);
-  const queue = await (await api.get('/api/v1/kanban/followups')).json();
+  const queue = await (await api.get('/api/v1/kanban/followups', { params: { related_patient_id: patientId } })).json();
   return queue.items.filter((c: Card) => c.related_patient_id === patientId);
 }
 
