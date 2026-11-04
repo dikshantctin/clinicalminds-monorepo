@@ -33,6 +33,7 @@ test.describe('front desk (SUPPORT_STAFF) in the browser', () => {
   const adminEmail = `admin.${slug}@example.com`;
   const deskEmail = `desk.${slug}@example.com`;
   const patientName = uniq('Booked');
+  let patientId = '';
 
   test.beforeAll(async () => {
     const anon = await pwRequest.newContext({ baseURL: env.API_URL });
@@ -63,8 +64,9 @@ test.describe('front desk (SUPPORT_STAFF) in the browser', () => {
         data: { first_name: patientName, last_name: 'Patient', primary_diagnosis: 'F41.1 Generalised anxiety' },
       });
       expect(patient.status(), await patient.text()).toBe(200);
+      patientId = (await patient.json()).id;
       const session = await therapist.ctx.post('/api/v1/sessions/', {
-        data: { patient_id: (await patient.json()).id, scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString() },
+        data: { patient_id: patientId, scheduled_at: new Date(Date.now() + 2 * 86_400_000).toISOString() },
       });
       expect(session.status(), await session.text()).toBe(200);
       const flagged = await therapist.ctx.put(`/api/v1/sessions/${(await session.json()).id}`, {
@@ -138,4 +140,25 @@ test.describe('front desk (SUPPORT_STAFF) in the browser', () => {
     await expect(page.getByTestId('session-patient-notes')).toHaveCount(0);
     await expect(page.getByText('Risk observed')).toHaveCount(0);
   });
+
+  // Edit patient: the desk gets the contact fields only; an admin on the same record also gets the clinical ones
+  const CONTACT = ['first_name', 'last_name', 'date_of_birth', 'gender', 'email', 'phone', 'medical_record_number', 'ec_name', 'ec_phone', 'ec_relationship'];
+  const CLINICAL = ['status', 'primary_diagnosis', 'secondary_diagnoses', 'risk_factors', 'intake_notes'];
+
+  for (const [who, email, clinical] of [['the desk', deskEmail, 0], ['an admin', adminEmail, 1]] as const) {
+    test(`Edit patient as ${who}: contact fields${clinical ? ' and the clinical ones' : ' only'}`, async ({ page }) => {
+      const login = new LoginPage(page);
+      await login.goto();
+      await login.login(email, PASSWORD);
+      await expect(page).toHaveURL(/\/dashboard/);
+      await page.goto(`/dashboard/patients/${patientId}`);
+      await page.getByTestId('patient-edit').click();
+      const dialog = page.getByTestId('patient-edit-dialog');
+      await expect(dialog.getByTestId('patient-edit-first_name')).toHaveValue(patientName);
+      for (const key of CONTACT) await expect(dialog.getByTestId(`patient-edit-${key}`)).toHaveCount(1);
+      for (const key of CLINICAL) await expect(dialog.getByTestId(`patient-edit-${key}`)).toHaveCount(clinical);
+      if (clinical) await expect(dialog.getByTestId('patient-edit-primary_diagnosis')).toHaveValue('F41.1 Generalised anxiety');
+      else await expect(dialog.getByText('F41.1 Generalised anxiety')).toHaveCount(0);
+    });
+  }
 });

@@ -1,6 +1,7 @@
 import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, DEMO_THERAPIST } from '../src/env';
+import { E2E_CLINIC, deleteClinic } from '../src/clinics';
 
 /**
  * Staff can't double-book a clinician; an admin or clinical director may override with a reason
@@ -23,6 +24,47 @@ async function newPatient(api: APIRequestContext, assignedTo?: string): Promise<
   });
   expect(res.status(), await res.text()).toBe(200);
   return (await res.json()).id;
+}
+
+const ALLOW_LISTED_PHONE = '+919876543211'; // VERIFICATION_TEST_PHONES: onboarding skips phone.email
+
+/** A throwaway clinic `E2E <slug>` with a front desk and a therapist; delete it with deleteClinic(owner). */
+async function onboardDeskClinic(anon: APIRequestContext): Promise<{ owner: string; desk: string; therapist: string }> {
+  const slug = uniq('dbdesk').toLowerCase();
+  const email = (who: string) => `${who}.${slug}@example.com`;
+  const member = (who: string, role: string) => ({
+    email: email(who), first_name: who, last_name: 'Staff', role, phone: ALLOW_LISTED_PHONE, license_number: `LIC-${slug}`,
+    temporary_password: 'Password123!', send_invitation: false,
+  });
+  const res = await anon.post('/api/v1/onboarding/complete', {
+    data: {
+      organization: {
+        name: `${E2E_CLINIC} ${slug}`, type: 'clinic', contact_email: `${slug}@example.com`, contact_phone: ALLOW_LISTED_PHONE,
+        address_line1: '1 Road', city: 'Pune', state: 'MH', postal_code: '411001',
+      },
+      plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
+      admin: { email: email('admin'), password: 'Password123!', first_name: 'Clash', last_name: 'Admin', phone: ALLOW_LISTED_PHONE },
+      admin_role: 'ADMIN',
+      team_members: [member('desk', 'SUPPORT_STAFF'), member('therapist', 'THERAPIST')],
+    },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  return { owner: email('admin'), desk: email('desk'), therapist: email('therapist') };
+}
+
+/** Staff login → a context that sends what the frontend sends. */
+async function loginAs(email: string): Promise<{ ctx: APIRequestContext; userId: string; role: string }> {
+  const anon = await pwRequest.newContext({ baseURL: env.API_URL });
+  const res = await anon.post('/api/v1/auth/login', { data: { email, password: 'Password123!' } });
+  const text = await res.text();
+  await anon.dispose();
+  expect(res.status(), `login as ${email}: ${text}`).toBe(200);
+  const body = JSON.parse(text);
+  const ctx = await pwRequest.newContext({
+    baseURL: env.API_URL,
+    extraHTTPHeaders: { Authorization: `Bearer ${body.access_token}`, 'X-Tenant-ID': body.tenant.id },
+  });
+  return { ctx, userId: body.user.id, role: body.user.role };
 }
 
 const book = (ctx: APIRequestContext, patient_id: string, scheduled_at: string, extra: Record<string, unknown> = {}) =>
@@ -118,6 +160,42 @@ test.describe('staff booking refuses a double-booked clinician', () => {
     } finally {
       await jane.dispose();
       await api.delete(`/api/v1/patients/${patientId}`);
+    }
+  });
+
+  test('the front desk cannot override a double booking (403, nothing changes); its clash is 409, a free time 200', async ({ anon }) => {
+    const clinic = await onboardDeskClinic(anon);
+    const ther = await loginAs(clinic.therapist);
+    const front = await loginAs(clinic.desk);
+    try {
+      expect(front.role).toBe('SUPPORT_STAFF');
+      const at = farDay();
+      const patientId = await newPatient(ther.ctx, ther.userId);
+      const first = await book(ther.ctx, patientId, at('10:00'));
+      expect(first.status(), await first.text()).toBe(200);
+      const second = await book(ther.ctx, patientId, at('12:00'));
+      expect(second.status(), await second.text()).toBe(200);
+      const id: string = (await second.json()).id;
+
+      const forced = await front.ctx.put(`/api/v1/sessions/${id}`, { data: { scheduled_at: at('10:20'), override_reason: 'walk-in' } });
+      expect(forced.status()).toBe(403);
+      expect((await forced.json()).message).toBe('Only an admin or clinical director can double-book a clinician');
+      const kept = await (await ther.ctx.get(`/api/v1/sessions/${id}`)).json();
+      expect(new Date(kept.scheduled_at).getTime()).toBe(new Date(at('12:00')).getTime());
+      expect(kept.session_notes ?? '').not.toContain('Double-booked (override)');
+
+      const clash = await front.ctx.put(`/api/v1/sessions/${id}`, { data: { scheduled_at: at('10:20') } });
+      expect(clash.status()).toBe(409);
+      expect((await clash.json()).message).toBe(CLASH);
+
+      const moved = await front.ctx.put(`/api/v1/sessions/${id}`, { data: { scheduled_at: at('13:00') } });
+      expect(moved.status(), await moved.text()).toBe(200);
+      const after = await (await ther.ctx.get(`/api/v1/sessions/${id}`)).json();
+      expect(new Date(after.scheduled_at).getTime()).toBe(new Date(at('13:00')).getTime());
+    } finally {
+      await ther.ctx.dispose();
+      await front.ctx.dispose();
+      await deleteClinic(clinic.owner);
     }
   });
 });

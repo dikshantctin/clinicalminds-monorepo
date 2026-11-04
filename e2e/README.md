@@ -82,6 +82,8 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        front-desk-access (SUPPORT_STAFF in its own onboarded clinic: walk-in 200, no clinical keys in
                        patient/session responses, 403 on clinical writes and delete, desk payment, no-show, outcome,
                        clinic-wide daily/weekly schedule while a therapist still sees only their own),
+                       session-double-booking (409 clash, admin override with a reason; a therapist's or the front desk's
+                       override is 403 and changes nothing, the desk's plain clash 409, its move to a free time 200),
                        kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
@@ -105,7 +107,8 @@ web/                   auth, guards, navigation, patients, sessions, tasks-teams
                        a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
                        sessions also: mark no-show from the list, record a cash payment, save a risk flag on the detail page,
                        front-desk (SUPPORT_STAFF: Patients + Sessions in the nav, walk-in without clinical fields, no Clinical
-                       Data tab, no risk badge / Notes column / risk-flag card, records a payment),
+                       Data tab, no risk badge / Notes column / risk-flag card, records a payment; Edit patient shows the desk
+                       contact fields only, an admin also Status / diagnoses / risk factors / intake notes),
                        journey (serial, browser-only clinic day: admin publishes a service, registers a patient,
                        schedules a session → patient books online → therapist starts it → missed session shows on
                        the Follow-up queue; the one API shortcut moves a session into the past)
