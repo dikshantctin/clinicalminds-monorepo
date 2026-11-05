@@ -44,7 +44,10 @@ async function clinicWithMember(anon: APIRequestContext, role: string) {
   const tenantId: string = (await res.json()).tenant_id;
   const ownerCtx = await bearer((await login(anon, owner)).access_token);
   const m = await login(anon, member);
-  return { owner, ownerCtx, tenantId, memberId: m.user.id as string, memberToken: m.access_token as string };
+  return {
+    owner, ownerCtx, tenantId, memberId: m.user.id as string, memberToken: m.access_token as string,
+    memberKey: m.refresh_token as string,
+  };
 }
 
 test.describe('the role and clinic of a token are re-read per request', () => {
@@ -64,6 +67,10 @@ test.describe('the role and clinic of a token are re-read per request', () => {
         expect(res.status(), `${method} ${path}`).toBe(401);
         expect(await res.json()).toEqual(ENDED);
       }
+      // the sign-in cannot be renewed either (stay signed in)
+      const renew = await anon.post('/api/v1/auth/session/refresh', { data: { refresh_token: c.memberKey } });
+      expect(renew.status()).toBe(401);
+      expect((await renew.json()).message).toBe('Session ended');
       // the clinic's own admin is unaffected
       expect((await c.ownerCtx.get('/api/v1/patients/')).status()).toBe(200);
     } finally {

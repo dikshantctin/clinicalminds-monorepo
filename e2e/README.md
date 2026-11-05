@@ -60,7 +60,9 @@ npx playwright test api/patients.spec.ts -g "create"   # one spec / one test
   the `web` project — the same keys `frontend/src/context/AuthContext.tsx` rehydrates from.
 
 Specs that must start logged out (`web/auth.spec.ts`, `web/guards.spec.ts`,
-`web/portal-onboarding.spec.ts`) override `storageState` to empty.
+`web/portal-onboarding.spec.ts`, `web/stay-signed-in.spec.ts`) override `storageState` to empty.
+The seeded access token lasts 1 h and the storage state carries no `refresh_token`, so a run longer than an hour
+would see logged-out pages.
 
 ## Layout
 
@@ -90,7 +92,9 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        overview also covers: no-show via POST …/no-show (status is not a PUT field), the 24 h stale
                        sweep, desk payments → revenue, clinician scope (logs in as the seeded psychologist, skips if
                        that login is blocked); sessions covers cancel/no-show guards and the clinician risk flag → queue,
-                       followups (missed session → card, idempotent sync, closed cards stay closed), deid
+                       followups (missed session → card, idempotent sync, closed cards stay closed), deid,
+                       stay-signed-in (refresh keys: 1 h access token, 24 h / 7 d / 30 d sign-ins, rotation, 409 on a
+                       just-replaced key, logout and garbage keys → 401)
                        catalog (services/locations: 422 for blank name, duration <= 0, negative or 3-decimal price;
                        THERAPIST 403 on writes; search + skip/limit totals; deactivated → gone from public booking;
                        structured location address round-trips)
@@ -109,6 +113,9 @@ web/                   auth, guards, navigation, patients, sessions, tasks-teams
                        the Follow-up queue; the one API shortcut moves a session into the past)
                        catalog (/admin/services, /admin/locations: sidebar links, add with validation, search, edit,
                        deactivate and delete with confirmation, status filter, server paging),
+                       stay-signed-in ("Stay signed in" box unticked on both sign-ins; an expired access token is
+                       renewed quietly on the dashboard and portal; no / bad refresh key → the right sign-in; logout
+                       ends the sign-in so its refresh key gets 401),
                        pwa-manifest (installable app: manifest fields, 192/512/maskable icons served as PNG, every
                        icon link resolves, no "AI/crisis" wording, old /site.webmanifest gone),
                        pwa-offline (service worker registered on the production build; offline the sign-in still
