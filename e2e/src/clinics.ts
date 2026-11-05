@@ -21,3 +21,55 @@ export async function deleteClinic(adminEmail: string, password = 'Password123!'
     await ctx.dispose();
   }
 }
+
+export interface OwnClinic {
+  api: import('@playwright/test').APIRequestContext;
+  adminEmail: string;
+  token: string;
+  user: { id: string };
+  tenantId: string;
+  firmCode: string;
+  serviceId: string;
+}
+
+/** A fresh clinic (Asia/Kolkata) whose CLINICAL_DIRECTOR admin is its one bookable clinician, with one free
+ * 50-minute service. For specs that change clinic-wide settings the demo clinic's other specs rely on. */
+export async function onboardOwnClinic(prefix: string): Promise<OwnClinic> {
+  const slug = `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toLowerCase();
+  const phone = '+919876543211'; // VERIFICATION_TEST_PHONES: onboarding skips phone.email
+  const adminEmail = `admin.${slug}@example.com`;
+  const anon = await pwRequest.newContext({ baseURL: env.API_URL });
+  try {
+    const onboarded = await anon.post('/api/v1/onboarding/complete', {
+      data: {
+        organization: {
+          name: `${E2E_CLINIC} ${slug}`, type: 'clinic', contact_email: `${slug}@example.com`, contact_phone: phone,
+          address_line1: '1 MG Road', city: 'Pune', state: 'MH', postal_code: '411001',
+        },
+        plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
+        admin: { email: adminEmail, password: 'Password123!', first_name: 'Hema', last_name: 'Hours', phone },
+        admin_role: 'CLINICAL_DIRECTOR',
+        team_members: [],
+        timezone: 'Asia/Kolkata',
+      },
+    });
+    expect(onboarded.status(), await onboarded.text()).toBe(200);
+    const login = await anon.post('/api/v1/auth/login', { data: { email: adminEmail, password: 'Password123!' } });
+    expect(login.status(), await login.text()).toBe(200);
+    const { access_token, user, tenant } = await login.json();
+    const api = await pwRequest.newContext({
+      baseURL: env.API_URL,
+      extraHTTPHeaders: { Authorization: `Bearer ${access_token}`, 'X-Tenant-ID': tenant.id },
+    });
+    const service = await api.post('/api/v1/catalog/services', {
+      data: { name: 'Therapy', description: 'e2e', duration_minutes: 50, price: 0, currency: 'INR' },
+    });
+    expect(service.status(), await service.text()).toBe(201);
+    const serviceId = (await service.json()).id;
+    const linked = await api.put(`/api/v1/catalog/services/${serviceId}/clinicians`, { data: { clinician_ids: [user.id] } });
+    expect(linked.status(), await linked.text()).toBe(200);
+    return { api, adminEmail, token: access_token, user, tenantId: tenant.id, firmCode: tenant.firm_code, serviceId };
+  } finally {
+    await anon.dispose();
+  }
+}

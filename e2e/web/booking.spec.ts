@@ -1,16 +1,13 @@
 import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 import { assignDemoClinicians, cleanupServices, createService, demoClinicianIds } from '../src/catalog';
+import { openDay } from '../src/days';
 
 const created: string[] = [];
 
 const TEST_PHONE = '+919876543210'; // test-listed: no phone.email round-trip needed
 
-const dayAfterTomorrow = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 2);
-  return d.toISOString().slice(0, 10);
-};
+const dayAfterTomorrow = () => openDay(2); // clinics are closed on Sunday
 
 test.describe('public booking page (/book/<firmCode>)', () => {
   requireWeb();
@@ -128,12 +125,11 @@ test.describe('public booking page (/book/<firmCode>)', () => {
     let reference: string | undefined;
     let patientId: string | undefined;
     try {
-      const day = new Date();
-      day.setDate(day.getDate() + 4); // not day +2, which the other booking specs fill
+      const day = openDay(4); // not day +2, which the other booking specs fill
       await page.goto(`/book/${auth.firmCode}`);
       await page.getByTestId(`service-${service.id}`).click();
       await page.getByTestId('practitioner-any').click();
-      await page.getByTestId('booking-date').fill(day.toISOString().slice(0, 10));
+      await page.getByTestId('booking-date').fill(day);
       const slotButtons = page.getByTestId('booking-slots').getByRole('radio');
       await expect(slotButtons.first()).toBeVisible({ timeout: 15_000 });
       await slotButtons.last().click();

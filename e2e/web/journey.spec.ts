@@ -3,6 +3,7 @@ import { env, uniq } from '../src/env';
 import { LoginPage } from '../src/pages/login.page';
 import { AddPatientPage } from '../src/pages/patients.page';
 import { adminApi, assignDemoClinicians } from '../src/catalog';
+import { openDay } from '../src/days';
 
 /**
  * One clinic, one day, through the browser only (the single API shortcut is time-travelling a
@@ -32,11 +33,7 @@ const localDateTime = (daysAhead: number, hour: number) => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
-const isoDate = (daysAhead: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + daysAhead);
-  return d.toISOString().slice(0, 10);
-};
+const isoDate = (daysAhead: number) => openDay(daysAhead); // public booking day: clinics are closed on Sunday
 
 async function loginAs(page: import('@playwright/test').Page, email: string, password: string) {
   const login = new LoginPage(page);
