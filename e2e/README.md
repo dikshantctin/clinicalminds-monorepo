@@ -100,6 +100,9 @@ web/                   auth, guards, navigation, patients, sessions, tasks-teams
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
                        never on the page; Remove webhook secret clears it and is absent when none is stored;
                        a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
+                       mobile-shell (390 px, nothing scrolls sideways: staff shell, patient sign-in / portal /
+                       set-password, public booking through slot choice, patients, a patient, sessions, tasks,
+                       follow-ups),
                        sessions also: mark no-show from the list, record a cash payment, save a risk flag on the detail page,
                        journey (serial, browser-only clinic day: admin publishes a service, registers a patient,
                        schedules a session → patient books online → therapist starts it → missed session shows on
@@ -112,7 +115,10 @@ web/                   auth, guards, navigation, patients, sessions, tasks-teams
                        opens with the offline notice; API responses never come from the service worker; the cache holds
                        only static app files before and after logout),
                        pwa-update (a new version is offered in every tab; Reload switches only its own tab, an
-                       unsaved form in another tab survives; Later dismisses). The web project blocks service workers;
+                       unsaved form in another tab survives; Later dismisses),
+                       pwa-install ("Install app" card: shown on Chrome's install offer (faked) for patients and staff,
+                       iPhone gets the Add to Home Screen hint, Not now hides it for 30 days, hidden when installed,
+                       keyboard + named region, in the page flow at 390 px). The web project blocks service workers;
                        only these specs allow them.
 ```
 

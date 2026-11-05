@@ -2,6 +2,7 @@ import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtur
 import { RAZORPAY, uniq } from '../src/env';
 import { acquireLock, releaseLock } from '../src/lock';
 import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
+import { openDay } from '../src/days';
 
 const created: string[] = [];
 
@@ -19,11 +20,7 @@ const haveSecret = Boolean(RAZORPAY.keyId && RAZORPAY.keySecret);
 const NO_GATEWAY = 'the demo clinic has no Razorpay account connected — connect one in Settings → Payments (or run backend/scripts/connect_demo_razorpay.py)';
 
 // a dedicated day so this browser booking never contends with the api payment specs (day+3) or booking/journey (day+2)
-const bookingDate = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 4);
-  return d.toISOString().slice(0, 10);
-};
+const bookingDate = () => openDay(4);
 
 async function gatewayReady(api: any): Promise<boolean> {
   const cfg = await (await api.get('/api/v1/payments/config')).json();

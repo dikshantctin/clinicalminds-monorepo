@@ -3,6 +3,7 @@ import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { RAZORPAY, uniq } from '../src/env';
 import { acquireLock, releaseLock } from '../src/lock';
 import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
+import { openDay } from '../src/days';
 
 /**
  * Per-clinic payments: each clinic connects its OWN Razorpay account (Settings → Payments); patients who
@@ -22,11 +23,7 @@ const NO_GATEWAY = 'the demo clinic has no Razorpay account connected — connec
 // One day per booking test, so these never contend with each other, booking.spec / journey (day+2),
 // web payments (day+4), booking.spec's concurrency test (day+7) or booking-shared-phone (day+10).
 const DAY = { pending: 3, free: 5, webhook: 6, desk: 8, refund: 9 } as const;
-const bookingDate = (daysAhead: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + daysAhead);
-  return d.toISOString().slice(0, 10);
-};
+const bookingDate = (daysAhead: number) => openDay(daysAhead); // the n-th open day: clinics close on Sunday
 
 /** The demo clinic's stored gateway, read from the API (no secret). */
 async function gateway(api: any): Promise<{ ready: boolean; keyId: string | null; platformEnabled: boolean }> {
