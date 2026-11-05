@@ -52,6 +52,8 @@ test.describe('clinician leave', () => {
     }
   };
 
+  // A director (or admin) may approve their own leave: some clinics have no ADMIN (user decision 2026-11-05).
+  // Leave may start in the past (sick leave recorded afterwards; user decision 2026-11-05).
   test('pending leave blocks nothing; the director approves their own and the day has no slots; cancelling brings them back', async () => {
     const made = await apply(clinic, clinic.user.id, { reason: 'planned', note: 'Family wedding', ...wholeDay(wednesday) });
     expect(made.status(), await made.text()).toBe(201);
@@ -61,7 +63,7 @@ test.describe('clinician leave', () => {
 
     const approved = await clinic.api.post(`/api/v1/leave/${leave.id}/approve`);
     expect(approved.status(), await approved.text()).toBe(200);
-    expect((await approved.json()).status).toBe('approved');
+    expect(await approved.json()).toMatchObject({ status: 'approved', self_approved: true }); // the director's own
     expect(await slots(wednesday)).toEqual([]);
     expect((await slots(tuesday)).length).toBeGreaterThan(0);
 
@@ -113,7 +115,7 @@ test.describe('clinician leave', () => {
     expect((await clinic.api.post(`/api/v1/sessions/${session.id}/cancel`, { data: { reason: 'clinician on leave' } })).status()).toBe(200);
     const approved = await clinic.api.post(`/api/v1/leave/${leave.id}/approve`);
     expect(approved.status(), await approved.text()).toBe(200);
-    expect(await approved.json()).toMatchObject({ status: 'approved', sessions: [] });
+    expect(await approved.json()).toMatchObject({ status: 'approved', self_approved: false, sessions: [] });
   });
 
   test('staff booking is not blocked, but time-off says what a booking would overlap', async () => {
@@ -155,6 +157,9 @@ test.describe('clinician leave', () => {
       expect((await res.json()).message).toBe(message);
     }
     // the therapist's Thursday leave is approved: a request overlapping it is refused
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    const past = await apply(therapist, therapist.user.id, { reason: 'sick', starts_at: yesterday, ends_at: new Date(Date.parse(yesterday) + 3_600_000).toISOString() });
+    expect(past.status(), await past.text()).toBe(201); // recorded afterwards
     const overlap = await apply(therapist, therapist.user.id, { reason: 'sick', starts_at: at(thursday, '15:00'), ends_at: at(friday, '10:00') });
     expect(overlap.status()).toBe(409);
     expect((await overlap.json()).message).toBe('This overlaps another leave request');
@@ -162,5 +167,25 @@ test.describe('clinician leave', () => {
     const stranger = '00000000-0000-4000-8000-000000000001';
     expect((await clinic.api.post(`/api/v1/leave/${stranger}/approve`)).status()).toBe(404);
     expect((await anon.get('/api/v1/leave')).status()).toBe(401);
+  });
+
+  test("another clinic's director cannot see, approve or cancel this clinic's leave (404)", async () => {
+    const other = await onboardOwnClinic('leaveother');
+    try {
+      const made = await apply(therapist, therapist.user.id, { reason: 'planned', ...wholeDay(nextWeekday(1, 10)) });
+      expect(made.status(), await made.text()).toBe(201);
+      const leave = await made.json();
+      for (const action of ['approve', 'reject', 'cancel']) {
+        expect((await other.api.post(`/api/v1/leave/${leave.id}/${action}`)).status(), action).toBe(404);
+      }
+      expect((await other.api.get('/api/v1/leave')).status()).toBe(200);
+      expect(await (await other.api.get('/api/v1/leave')).json()).toEqual([]);
+      expect((await apply(other, therapist.user.id, { reason: 'sick', ...wholeDay(friday) })).status()).toBe(404);
+      expect((await other.api.get(`/api/v1/clinicians/${therapist.user.id}/time-off`, { params: { starts_at: at(friday, '11:00') } })).status()).toBe(404);
+      expect((await clinic.api.get('/api/v1/leave', { params: { status: 'pending' } })).status()).toBe(200);
+    } finally {
+      await other.api.dispose();
+      await deleteClinic(other.adminEmail);
+    }
   });
 });
