@@ -34,6 +34,9 @@ export default defineConfig({
         storageState: '.auth/state.json',
         trace: 'retain-on-failure',
         screenshot: 'only-on-failure',
+        // The production build registers a service worker (PWA). Blocked by default so page.route mocks and
+        // fresh page loads behave as before; the pwa-* specs opt back in with serviceWorkers: 'allow'.
+        serviceWorkers: 'block',
       },
     },
   ],

@@ -1,6 +1,7 @@
 import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_THERAPIST, DEMO_PSYCHOLOGIST, DEMO_PATIENT } from '../src/env';
+import { openDay } from '../src/days';
 
 /**
  * Which clinicians offer which service. Only an admin assigns them: a new service starts with nobody and
@@ -10,11 +11,7 @@ import { env, uniq, RANDOM_UUID, DEMO_THERAPIST, DEMO_PSYCHOLOGIST, DEMO_PATIENT
 
 const TEST_PHONE = '+919876543210'; // VERIFICATION_TEST_PHONES: no phone.email round-trip
 
-const dayAfterTomorrow = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 2);
-  return d.toISOString().slice(0, 10);
-};
+const dayAfterTomorrow = () => openDay(2); // clinics are closed on Sunday
 
 async function login(creds: { email: string; password: string }, audience?: 'patient') {
   const anon = await pwRequest.newContext({ baseURL: env.API_URL });
