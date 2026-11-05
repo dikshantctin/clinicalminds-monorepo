@@ -105,7 +105,15 @@ web/                   auth, guards, navigation, patients, sessions, tasks-teams
                        schedules a session → patient books online → therapist starts it → missed session shows on
                        the Follow-up queue; the one API shortcut moves a session into the past)
                        catalog (/admin/services, /admin/locations: sidebar links, add with validation, search, edit,
-                       deactivate and delete with confirmation, status filter, server paging)
+                       deactivate and delete with confirmation, status filter, server paging),
+                       pwa-manifest (installable app: manifest fields, 192/512/maskable icons served as PNG, every
+                       icon link resolves, no "AI/crisis" wording, old /site.webmanifest gone),
+                       pwa-offline (service worker registered on the production build; offline the sign-in still
+                       opens with the offline notice; API responses never come from the service worker; the cache holds
+                       only static app files before and after logout),
+                       pwa-update (a new version is offered in every tab; Reload switches only its own tab, an
+                       unsaved form in another tab survives; Later dismisses). The web project blocks service workers;
+                       only these specs allow them.
 ```
 
 Specs create their own data with unique names (`uniq()`) and clean up in `finally` blocks. Catalog services
