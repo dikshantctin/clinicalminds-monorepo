@@ -164,6 +164,11 @@ test.describe('clinician leave', () => {
     expect(overlap.status()).toBe(409);
     expect((await overlap.json()).message).toBe('This overlaps another leave request');
 
+    // two overlapping requests at the same moment: exactly one is made
+    const monday = nextWeekday(1, 17);
+    const both = await Promise.all([1, 2].map(() => apply(therapist, therapist.user.id, { reason: 'planned', ...wholeDay(monday) })));
+    expect(both.map((r) => r.status()).sort()).toEqual([201, 409]);
+
     const stranger = '00000000-0000-4000-8000-000000000001';
     expect((await clinic.api.post(`/api/v1/leave/${stranger}/approve`)).status()).toBe(404);
     expect((await anon.get('/api/v1/leave')).status()).toBe(401);
