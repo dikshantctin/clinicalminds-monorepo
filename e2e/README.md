@@ -82,10 +82,11 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        cannot change a colleague's session; unknown session ids → 404),
                        schedules (daily schedule in the clinic time zone),
                        front-desk-access (SUPPORT_STAFF in its own onboarded clinic: walk-in 200, no clinical keys in
-                       patient/session responses, 403 on clinical writes and delete, desk payment, no-show, outcome,
+                       patient/session responses, its booking goes to the patient's assigned clinician, 403 on clinical writes and delete, desk payment, no-show, outcome,
                        clinic-wide daily/weekly schedule while a therapist still sees only their own),
                        session-double-booking (409 clash, admin override with a reason; a therapist's or the front desk's
-                       override is 403 and changes nothing, the desk's plain clash 409, its move to a free time 200),
+                       override is 403 and changes nothing, the desk's plain clash 409, its move to a free time 200; the desk
+                       booking a named clinician's taken time: 403 with a reason, 409 without, the clinician's day unchanged),
                        kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),

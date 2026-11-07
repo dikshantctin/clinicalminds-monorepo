@@ -223,11 +223,18 @@ test.describe('front desk (SUPPORT_STAFF) access', () => {
     expect(booked.status(), await booked.text()).toBe(200);
     const session = await booked.json();
     expect(session.status).toBe('scheduled');
+    // the desk is never the clinician: with no pick the session goes to the patient's assigned clinician
+    expect(session.therapist_id).toBe(therapist.userId);
 
     const paid = await desk.ctx.post(`/api/v1/sessions/${session.id}/payments`, { data: { amount_paise: 80000, method: 'cash' } });
     expect(paid.status(), await paid.text()).toBe(200);
     expect(await paid.json()).toMatchObject({ amount_paise: 80000, method: 'cash', status: 'paid' });
 
+    // a no-show needs a session whose time has come: move it an hour into the past (create refuses past times)
+    const backdated = await desk.ctx.put(`/api/v1/sessions/${session.id}`, {
+      data: { scheduled_at: new Date(Date.now() - 3_600_000).toISOString() },
+    });
+    expect(backdated.status(), await backdated.text()).toBe(200);
     const noShow = await desk.ctx.post(`/api/v1/sessions/${session.id}/no-show`, { data: { reason: 'did not come' } });
     expect(noShow.status(), await noShow.text()).toBe(200);
     expect((await noShow.json()).status).toBe('no_show');

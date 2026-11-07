@@ -198,4 +198,36 @@ test.describe('staff booking refuses a double-booked clinician', () => {
       await deleteClinic(clinic.owner);
     }
   });
+
+  test("the front desk booking a clinician's taken time: with a reason 403, without 409; the clinician's day is unchanged", async ({ anon }) => {
+    const clinic = await onboardDeskClinic(anon);
+    const ther = await loginAs(clinic.therapist);
+    const front = await loginAs(clinic.desk);
+    try {
+      const at = farDay();
+      const day = at('00:00').slice(0, 10);
+      const patientId = await newPatient(ther.ctx, ther.userId);
+      expect((await book(ther.ctx, patientId, at('10:00'))).status()).toBe(200);
+      const dayCount = async () => {
+        const res = await ther.ctx.get(`/api/v1/sessions/?date_from=${day}&date_to=${day}&limit=0`);
+        expect(res.status(), await res.text()).toBe(200);
+        return (await res.json()).sessions.length as number;
+      };
+      expect(await dayCount()).toBe(1);
+
+      const forced = await book(front.ctx, patientId, at('10:20'), { therapist_id: ther.userId, override_reason: 'walk-in' });
+      expect(forced.status()).toBe(403);
+      expect((await forced.json()).message).toBe('Only an admin or clinical director can double-book a clinician');
+      expect(await dayCount()).toBe(1);
+
+      const clash = await book(front.ctx, patientId, at('10:20'), { therapist_id: ther.userId });
+      expect(clash.status()).toBe(409);
+      expect((await clash.json()).message).toBe(CLASH);
+      expect(await dayCount()).toBe(1);
+    } finally {
+      await ther.ctx.dispose();
+      await front.ctx.dispose();
+      await deleteClinic(clinic.owner);
+    }
+  });
 });
