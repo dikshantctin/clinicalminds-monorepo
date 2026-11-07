@@ -2,6 +2,7 @@ import { test, expect, requireApi, requireAuth, requireWeb } from '../src/fixtur
 import { LoginPage } from '../src/pages/login.page';
 import { DEMO_PATIENT, uniq } from '../src/env';
 import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
+import { openDay } from '../src/days';
 
 /** Phone width (iPhone 12-15). Nothing in the app shell may scroll sideways at this size. */
 const PHONE = { width: 390, height: 844 };
@@ -96,8 +97,7 @@ test.describe('public booking at 390 px', () => {
 
     await page.getByTestId(`service-${service.id}`).click();
     await page.getByRole('radio', { name: /Jane Doe/ }).click();
-    const day = new Date(Date.now() + 2 * 86_400_000);
-    await page.getByTestId('booking-date').fill(day.toISOString().slice(0, 10));
+    await page.getByTestId('booking-date').fill(openDay(5)); // clinic-local open day (closed on Sunday)
     await expect(page.getByTestId('booking-slots').getByRole('radio').first()).toBeVisible({ timeout: 15_000 });
     expect(await pageWidth(page)).toBeLessThanOrEqual(PHONE.width);
   });
