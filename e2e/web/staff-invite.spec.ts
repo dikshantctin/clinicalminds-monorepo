@@ -221,4 +221,49 @@ test.describe('staff invite (browser)', () => {
       await deleteClinic(clinic.owner);
     }
   });
+
+  test("a demoted admin's open page shows the server's refusal", async ({ anon, browser }) => {
+    const admin2Email = `${uniq('adm2')}@example.com`.toLowerCase();
+    const clinic = await onboardClinic(anon, { team: [{ email: admin2Email, role: 'ADMIN' }] });
+    const admin = await loginAs(clinic.owner);
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const roleOf = async (id: string) =>
+      (await (await admin.ctx.get(`/api/v1/tenants/${admin.tenant.id}/users`)).json()).find((u: { id: string }) => u.id === id).role;
+    try {
+      const listed = await (await admin.ctx.get(`/api/v1/tenants/${admin.tenant.id}/users`)).json();
+      const admin2Id: string = listed.find((u: { email: string }) => u.email === admin2Email).id;
+      expect(await roleOf(admin2Id)).toBe('ADMIN');
+
+      // admin2 opens Users & Permissions while still an ADMIN
+      const page = await context.newPage();
+      await page.goto('/auth/login');
+      await new LoginPage(page).login(admin2Email, 'Password123!');
+      await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
+      await page.goto('/dashboard/settings');
+      await page.getByRole('tab', { name: 'Users & Permissions' }).click();
+      const ownerRole = page.getByTestId(`staff-role-${admin.user.id}`);
+      await expect(ownerRole).toHaveValue('ADMIN');
+
+      // the first admin demotes admin2; the open page still shows Admin controls (the cached role)
+      const demoted = await admin.ctx.put(`/api/v1/tenants/${admin.tenant.id}/users/${admin2Id}/role`, {
+        data: { role: 'CLINICAL_DIRECTOR' },
+      });
+      expect(demoted.status(), await demoted.text()).toBe(200);
+      expect(await roleOf(admin2Id)).toBe('CLINICAL_DIRECTOR');
+      await expect(ownerRole).toBeVisible();
+      await expect(ownerRole.locator('option[value="ADMIN"]')).toHaveCount(1);
+
+      // admin2 tries to change the first admin's role: the server refuses and the page says why
+      await ownerRole.selectOption('THERAPIST');
+      await page.getByTestId('staff-role-dialog-confirm').click();
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Only an admin can grant, change or remove the admin role' }),
+      ).toHaveText('Only an admin can grant, change or remove the admin role');
+      expect(await roleOf(admin.user.id)).toBe('ADMIN');
+    } finally {
+      await context.close();
+      await admin.ctx.dispose();
+      await deleteClinic(clinic.owner);
+    }
+  });
 });

@@ -111,7 +111,8 @@ web/                   auth, guards, navigation, patients, sessions, tasks-teams
                        staff-invite (the Invite staff dialog validates and sends, role select staged behind a confirm (cancel sends nothing),
                        a director is offered no ADMIN and cannot edit or remove an ADMIN row, the same answer for another clinic's account,
                        the invitee's /auth/set-password → /auth/login → /auth/verify, Remove; the tab for a
-                       CLINICAL_DIRECTOR and not for a THERAPIST),
+                       CLINICAL_DIRECTOR and not for a THERAPIST; an admin demoted while the page is open sees the server's
+                       refusal and the other admin stays ADMIN),
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
