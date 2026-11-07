@@ -75,13 +75,20 @@ src/outbox.ts          reads the backend's dev email outbox (EMAIL_OUTBOX_DIR in
 src/pages/             page objects (login, dashboard nav + headings, add-patient form)
 api/                   health, auth, security (guards, tenant isolation, permissions),
                        role-access (table: route × role → exact 401/403/200; PATIENT needs a seeded
-                       patient.demo@democlinic.com login), patient-portal (invite → set password → portal
+                       patient.demo@democlinic.com login), desk-no-kanban (SUPPORT_STAFF → 403 on every
+                       /kanban and /teams route it tries, notifications and follow-ups included; ADMIN / THERAPIST 200), patient-portal (invite → set password → portal
                        login; the login audience picks staff vs PATIENT; an invite never overwrites a password),
                        patients, sessions (offsets, paging, filters, edit),
                        session-notes-access (a portal patient never gets clinician notes; a clinician
                        cannot change a colleague's session; unknown session ids → 404),
                        schedules (daily schedule in the clinic time zone),
-                       kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
+                       front-desk-access (SUPPORT_STAFF in its own onboarded clinic: walk-in 200, no clinical keys in
+                       patient/session responses, its booking goes to the patient's assigned clinician, 403 on clinical writes and delete, desk payment, no-show, outcome,
+                       clinic-wide daily/weekly schedule while a therapist still sees only their own),
+                       session-double-booking (409 clash, admin override with a reason; a therapist's or the front desk's
+                       override is 403 and changes nothing, the desk's plain clash 409, its move to a free time 200; the desk
+                       booking a named clinician's taken time: 403 with a reason, 409 without, the clinician's day unchanged),
+                       kanban, kanban-comments (author_name / user_name, history newest first and capped at 50, plain status values, no description text; 401 / 403 PATIENT / 422), teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
                        booking (public self-booking: info, slots, booking → clinic + therapist lists, 409/400),
@@ -98,7 +105,7 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        catalog (services/locations: 422 for blank name, duration <= 0, negative or 3-decimal price;
                        THERAPIST 403 on writes; search + skip/limit totals; deactivated → gone from public booking;
                        structured location address round-trips)
-web/                   auth, guards, navigation, patients, sessions, tasks-teams, task-assignee-filter (Assignee filter by any staff member, exact card counts, no-match state), misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
+web/                   auth, guards, navigation, desk-no-kanban (the desk has no bell, no Tasks link, a follow-up tile that is not a link), patients, sessions, tasks-teams, task-assignee-filter (Assignee filter by any staff member, exact card counts, no-match state), kanban-comments (task dialog: comment + staff mention, history row; the mentioned therapist opens it from the bell), misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
@@ -108,6 +115,9 @@ web/                   auth, guards, navigation, patients, sessions, tasks-teams
                        set-password, public booking through slot choice, patients, a patient, sessions, tasks,
                        follow-ups),
                        sessions also: mark no-show from the list, record a cash payment, save a risk flag on the detail page,
+                       front-desk (SUPPORT_STAFF: Patients + Sessions in the nav, walk-in without clinical fields, no Clinical
+                       Data tab, no risk badge / Notes column / risk-flag card, records a payment; Edit patient shows the desk
+                       contact fields only, an admin also Status / diagnoses / risk factors / intake notes),
                        journey (serial, browser-only clinic day: admin publishes a service, registers a patient,
                        schedules a session → patient books online → therapist starts it → missed session shows on
                        the Follow-up queue; the one API shortcut moves a session into the past)
