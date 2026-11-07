@@ -25,4 +25,7 @@ export function nextWeekday(weekday: number, daysAhead: number, tz = 'Asia/Kolka
   return day;
 }
 
+/** The calendar date `n` days after `day` ("2026-11-10", 2 → "2026-11-12"). */
+export const addDays = (day: string, n: number): string => ymd(new Date(new Date(`${day}T12:00:00Z`).getTime() + n * 86_400_000), 'UTC');
+
 export { isoWeekday };

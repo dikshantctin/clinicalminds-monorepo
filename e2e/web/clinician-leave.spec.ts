@@ -1,7 +1,7 @@
 import { Browser } from '@playwright/test';
 import { test, expect, requireWeb, requireAuth } from '../src/fixtures';
 import { OwnClinic, OwnMember, deleteClinic, onboardOwnClinic } from '../src/clinics';
-import { nextWeekday } from '../src/days';
+import { addDays, nextWeekday } from '../src/days';
 
 /** Settings → Leave (capacity slice c2): a clinician applies, the director approves or rejects, the
  * applicant cancels; the schedule form warns (never blocks) when a booking falls in leave or blocked time.
@@ -13,10 +13,11 @@ test.describe('Settings → Leave and the schedule form warning', () => {
 
   let clinic: OwnClinic;
   let therapist: OwnMember;
+  // One base, so the four days are always Tue < Wed < Thu < Fri of the same week, whatever today is.
   const tuesday = nextWeekday(2, 3);
-  const wednesday = nextWeekday(3, 3);
-  const thursday = nextWeekday(4, 3);
-  const friday = nextWeekday(5, 3);
+  const wednesday = addDays(tuesday, 1);
+  const thursday = addDays(tuesday, 2);
+  const friday = addDays(tuesday, 3);
   const at = (day: string, hhmm: string) => `${day}T${hhmm}:00+05:30`;
   test.beforeAll(async () => {
     clinic = await onboardOwnClinic('leaveui', ['THERAPIST']);
