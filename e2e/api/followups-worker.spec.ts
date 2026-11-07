@@ -1,6 +1,6 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
-import { bookSession } from '../src/sessions';
+import { backdate, bookSession } from '../src/sessions';
 
 /**
  * The follow-up queue is kept current by the background worker (backend app/worker), not by page views:
@@ -32,11 +32,12 @@ test.describe('follow-up queue background sync', () => {
   });
 
   const cardFor = async (api: import('@playwright/test').APIRequestContext) => {
-    const queue = await (await api.get('/api/v1/kanban/followups')).json();
+    const queue = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: sessionId } })).json();
     return (queue.items as Card[]).find((t) => t.related_session_id === sessionId) ?? null;
   };
 
   test('a session marked no-show gets a missed-session card without anyone running the sync', async ({ api }) => {
+    await backdate(api, sessionId); // no-show needs a session whose time has come
     const marked = await api.post(`/api/v1/sessions/${sessionId}/no-show`, { data: { reason: 'did not turn up' } });
     expect(marked.status(), await marked.text()).toBe(200);
 

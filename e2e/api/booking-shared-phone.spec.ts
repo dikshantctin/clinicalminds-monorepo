@@ -2,6 +2,7 @@ import { APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 import { assignDemoClinicians, demoClinicianIds } from '../src/catalog';
+import { openDay } from '../src/days';
 
 /**
  * Several people can book on one phone (a parent booking for a child). After the phone is verified, the booking
@@ -10,7 +11,7 @@ import { assignDemoClinicians, demoClinicianIds } from '../src/catalog';
  * on the number is refused, so a second record is never created by accident.
  */
 const TEST_PHONE = '+919876543210'; // VERIFICATION_TEST_PHONES: no phone.email round-trip
-const inDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const inDays = (n: number) => openDay(n); // the n-th open day: clinics are closed on Sunday
 type Listed = { id: string; first_name: string; last_name: string };
 
 async function setup(anon: APIRequestContext, api: APIRequestContext, firmCode: string, day = 10) {

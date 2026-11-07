@@ -125,10 +125,12 @@ test.describe('PUT /api/v1/sessions/{id}/outcome', () => {
     const patientId = await newPatient(api);
     try {
       const done = await newSession(api, patientId);
+      await backdate(api, done, 1); // complete / no-show need a session whose time has come
       expect((await api.post(`/api/v1/sessions/${done}/complete`)).status()).toBe(200);
       expect(await detail(api, done)).toEqual(expect.objectContaining({ status: 'completed', outcome: 'attended' }));
 
       const missed = await newSession(api, patientId);
+      await backdate(api, missed, 1);
       expect((await api.post(`/api/v1/sessions/${missed}/no-show`)).status()).toBe(200);
       expect(await detail(api, missed)).toEqual(expect.objectContaining({ status: 'no_show', outcome: 'no_show' }));
 
@@ -158,7 +160,7 @@ test.describe('the 24 h sweep flags "needs confirmation"', () => {
 
       // the clinician is reminded through the follow-up queue's "Missed session" card
       await api.post('/api/v1/kanban/followups/sync');
-      const queue = await (await api.get('/api/v1/kanban/followups')).json();
+      const queue = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: id } })).json();
       const card = queue.items.find((t: { related_session_id: string | null }) => t.related_session_id === id);
       expect(card).toEqual(expect.objectContaining({ reason: 'missed_session' }));
 
@@ -192,7 +194,7 @@ test.describe('the 24 h sweep flags "needs confirmation"', () => {
       expect((await api.post('/api/v1/kanban/followups/sync')).status()).toBe(200);
       expect((await detail(api, id)).outcome).toBe('needs_confirmation');
       await api.post('/api/v1/kanban/followups/sync');
-      const queue = await (await api.get('/api/v1/kanban/followups')).json();
+      const queue = await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: id } })).json();
       const card = queue.items.find((t: { related_session_id: string | null }) => t.related_session_id === id);
       expect(card).toEqual(expect.objectContaining({ reason: 'missed_session' }));
     } finally {
