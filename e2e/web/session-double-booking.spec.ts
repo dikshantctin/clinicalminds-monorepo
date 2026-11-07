@@ -17,6 +17,9 @@ test.describe('schedule form: double booking', () => {
       expect(booked.status(), await booked.text()).toBe(200);
 
       await page.goto(`/dashboard/sessions/new?patient_id=${patient.id}`);
+      // the patient <select> is `required` and its options come from GET /patients: wait until the patient is chosen,
+      // or a click before that list arrives fails native validation silently (no POST)
+      await expect(page.getByRole('combobox', { name: 'Patient', exact: true })).toHaveValue(patient.id);
       await page.getByLabel('Date & Time').fill(`${day}T10:30`);
       await page.getByRole('button', { name: 'Schedule Session' }).click();
       await expect(page.getByTestId('session-clash')).toContainText('You already have a session at that time');
@@ -61,6 +64,9 @@ test.describe('schedule form: double booking', () => {
       );
       const page = await context.newPage();
       await page.goto(`/dashboard/sessions/new?patient_id=${patient.id}`);
+      // the patient <select> is `required` and its options come from GET /patients: wait until the patient is chosen,
+      // or a click before that list arrives fails native validation silently (no POST)
+      await expect(page.getByRole('combobox', { name: 'Patient', exact: true })).toHaveValue(patient.id);
       await page.getByLabel('Date & Time').fill(`${day}T15:20`);
       await page.getByRole('button', { name: 'Schedule Session' }).click();
       await expect(page.getByTestId('session-clash')).toContainText('You already have a session at that time');

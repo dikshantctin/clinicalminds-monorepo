@@ -41,6 +41,9 @@ test.describe('API paths the UI calls', () => {
       await expect(page.locator('tr', { hasText: first })).toHaveCount(1);
 
       await page.goto(`/dashboard/sessions/new?patient_id=${patient.id}`);
+      // the patient <select> is `required` and its options come from GET /patients: wait until the patient is chosen,
+      // or a click before that list arrives fails native validation silently (no POST)
+      await expect(page.getByRole('combobox', { name: 'Patient', exact: true })).toHaveValue(patient.id);
       await page.getByLabel('Date & Time').fill(`${uniqueDay()}T11:00`);
       await page.getByRole('button', { name: 'Schedule Session' }).click();
       await expect(page).toHaveURL(/\/dashboard\/sessions$/);
