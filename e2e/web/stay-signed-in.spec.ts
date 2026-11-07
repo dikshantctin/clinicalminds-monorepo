@@ -215,4 +215,32 @@ test.describe('stay signed in (browser)', () => {
     await expect(page.getByTestId('user-menu')).toBeVisible();
     expect(await stored(page, 'refresh_token')).not.toBe(key);
   });
+
+  for (const [status, why] of [
+    [429, 'rate limited: a clinic behind one IP'],
+    [408, 'timed out'],
+  ] as const) {
+    test(`a renewal answered ${status} (${why}) keeps the sign-in and renews on the next load`, async ({ page }) => {
+      await signIn(page, '/auth/login', env.EMAIL, env.PASSWORD);
+      await expect(page).toHaveURL(/\/dashboard$/);
+      const key = await stored(page, 'refresh_token');
+
+      await page.route(`**${REFRESH}`, (route) =>
+        route.fulfill({ status, contentType: 'application/json', body: '{"error":"rate_limited"}' }),
+      );
+      const refused = page.waitForResponse((r) => r.url().endsWith(REFRESH));
+      await reloadExpired(page);
+      expect((await refused).status()).toBe(status);
+      await page.waitForLoadState('networkidle');
+      await expect(page).toHaveURL(/\/dashboard$/);
+      expect(await stored(page, 'refresh_token')).toBe(key);
+      expect(await stored(page, 'auth_user')).not.toBeNull();
+
+      await page.unroute(`**${REFRESH}`);
+      const renewed = page.waitForResponse((r) => r.url().endsWith(REFRESH));
+      await page.reload();
+      expect((await renewed).status()).toBe(200);
+      await expect(page.getByTestId('user-menu')).toBeVisible();
+    });
+  }
 });
