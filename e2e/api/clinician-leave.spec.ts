@@ -2,7 +2,7 @@ import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, DEMO_PATIENT } from '../src/env';
 import { OwnClinic, OwnMember, deleteClinic, onboardOwnClinic } from '../src/clinics';
-import { nextWeekday } from '../src/days';
+import { addDays, nextWeekday } from '../src/days';
 
 /**
  * Leave with approval (capacity slice c2). A clinician applies (pending: blocks nothing); an admin or
@@ -23,10 +23,11 @@ test.describe('clinician leave', () => {
   let clinic: OwnClinic;
   let therapist: OwnMember;
   let desk: OwnMember;
+  // One base, so the four days are always Tue < Wed < Thu < Fri of the same week, whatever today is.
   const tuesday = nextWeekday(2, 3);
-  const wednesday = nextWeekday(3, 3);
-  const thursday = nextWeekday(4, 3);
-  const friday = nextWeekday(5, 3);
+  const wednesday = addDays(tuesday, 1);
+  const thursday = addDays(tuesday, 2);
+  const friday = addDays(tuesday, 3);
   test.beforeAll(async () => {
     clinic = await onboardOwnClinic('leave', ['THERAPIST', 'SUPPORT_STAFF']);
     [therapist, desk] = clinic.members;
