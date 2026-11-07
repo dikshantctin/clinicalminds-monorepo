@@ -36,6 +36,33 @@ test.describe('public booking page (/book/<firmCode>)', () => {
     }
   });
 
+  test('changing the day shows that day\'s times even when the earlier day\'s answer arrives last', async ({ page, api, auth }) => {
+    const service = await createService(api, created, { name: uniq('Late answer'), price: 0 });
+    await assignDemoClinicians(api, service.id);
+    const picked = openDay(5);
+    // The first-shown day's answer is slow and empty; the picked day's answer comes straight from the server
+    let staleAnswered!: () => void;
+    const staleDone = new Promise<void>((resolve) => (staleAnswered = resolve));
+    await page.route('**/api/v1/public/booking/*/slots?*', async (route) => {
+      const day = new URL(route.request().url()).searchParams.get('date');
+      if (day === picked) return route.continue();
+      await new Promise((r) => setTimeout(r, 1_500));
+      await route.fulfill({ json: { date: day, duration_minutes: 50, slots: [] } });
+      staleAnswered();
+    });
+
+    await page.goto(`/book/${auth.firmCode}`);
+    await page.getByTestId(`service-${service.id}`).click();
+    await page.getByRole('radio', { name: /Jane Doe/ }).click();
+    const pickedAnswer = page.waitForResponse((r) => r.url().includes('/slots?') && r.url().includes(`date=${picked}`));
+    await page.getByTestId('booking-date').fill(picked);
+    expect((await (await pickedAnswer).json()).slots.length).toBeGreaterThan(0);
+    await staleDone;
+
+    await expect(page.getByTestId('booking-slots').getByRole('radio').first()).toBeVisible();
+    await expect(page.getByTestId('booking-date')).toHaveValue(picked);
+  });
+
   test('a returning patient picks themselves from the people on their number; no new record is made', async ({ page, api, auth }) => {
     const service = await createService(api, created, { name: uniq('Returning'), price: 0 });
     await assignDemoClinicians(api, service.id);
