@@ -114,6 +114,8 @@ web/                   auth, guards, navigation, desk-no-kanban (the desk has no
                        mobile-shell (390 px, nothing scrolls sideways: staff shell, patient sign-in / portal /
                        set-password, public booking through slot choice, patients, a patient, sessions, tasks,
                        follow-ups),
+                       reflow-320 (WCAG 1.4.10 at 320 px: the dashboard and portal don't scroll sideways; menu button,
+                       bell, user menu, Settings, Logout, notification panel and nav drawer stay on screen and open),
                        sessions also: mark no-show from the list, record a cash payment, save a risk flag on the detail page,
                        front-desk (SUPPORT_STAFF: Patients + Sessions in the nav, walk-in without clinical fields, no Clinical
                        Data tab, no risk badge / Notes column / risk-flag card, records a payment; Edit patient shows the desk
