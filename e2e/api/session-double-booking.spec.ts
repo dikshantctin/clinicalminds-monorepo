@@ -74,7 +74,7 @@ test.describe('staff booking refuses a double-booked clinician', () => {
   requireApi();
   requireAuth();
 
-  test('an overlapping session → 409; back-to-back is fine; a cancelled session no longer blocks', async ({ api }) => {
+  test('an overlapping session → 409; back-to-back with the notes buffer is fine; a cancelled session no longer blocks', async ({ api }) => {
     const at = farDay();
     const patientId = await newPatient(api);
     try {
@@ -83,9 +83,12 @@ test.describe('staff booking refuses a double-booked clinician', () => {
       const clash = await book(api, patientId, at('10:30'));
       expect(clash.status()).toBe(409);
       expect((await clash.json()).message).toBe(CLASH);
-      const before = await book(api, patientId, at('09:10')); // 09:10–10:00 ends as the first starts
+      // each session holds its length plus the clinic's 10-minute notes buffer (capacity slice d)
+      expect((await book(api, patientId, at('09:05'))).status()).toBe(409); // 09:05–09:55 + 10 runs into 10:00
+      const before = await book(api, patientId, at('09:00')); // 09:00–09:50 + 10 ends as the first starts
       expect(before.status(), await before.text()).toBe(200);
-      const after = await book(api, patientId, at('10:50')); // starts as the first ends
+      expect((await book(api, patientId, at('10:50'))).status()).toBe(409); // inside the first one's buffer
+      const after = await book(api, patientId, at('11:00')); // starts as the first one's buffer ends
       expect(after.status(), await after.text()).toBe(200);
 
       expect((await api.post(`/api/v1/sessions/${(await first.json()).id}/cancel`, { data: { reason: 'e2e' } })).status()).toBe(200);
