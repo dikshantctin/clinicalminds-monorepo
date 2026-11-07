@@ -72,12 +72,21 @@ global-setup.ts        service probes + API login + storage state
 src/env.ts             URLs, credentials, reachable(), uniq()
 src/fixtures.ts        test/expect + fixtures: api (authed), anon, auth; require*() skip helpers
 src/outbox.ts          reads the backend's dev email outbox (EMAIL_OUTBOX_DIR in backend/.env): invite links
+src/clinics.ts         throwaway clinics: onboardClinic (allow-listed phone), loginAs, inviteStaff, deleteClinic
 src/pages/             page objects (login, dashboard nav + headings, add-patient form)
 api/                   health, auth, security (guards, tenant isolation, permissions),
                        role-access (table: route × role → exact 401/403/200; PATIENT needs a seeded
                        patient.demo@democlinic.com login), desk-no-kanban (SUPPORT_STAFF → 403 on every
                        /kanban and /teams route it tries, notifications and follow-ups included; ADMIN / THERAPIST 200), patient-portal (invite → set password → portal
                        login; the login audience picks staff vs PATIENT; an invite never overwrites a password),
+                       staff-invite (Settings → Users & Permissions in throwaway clinics: invite → outbox link →
+                       /auth/set-password → login with the role; GET /users pending → active; 409 duplicate, 422
+                       PATIENT / lower-case role, 401 / 403 THERAPIST / 403 foreign clinic, token reuse 400, role
+                       change and removal reach the login, a director gets 403 granting, changing or removing ADMIN
+                       but manages every other role, an ADMIN may, one invite answer shape for every address, a
+                       removed invitee's link 400, an expired link 400 (signed with backend/.env's SECRET_KEY,
+                       E2E_BACKEND_ENV), an account from another clinic gets no token and still lands in its first clinic, onboarding's "send
+                       invitation" emails the same link; the invitee's unproven phone → 403 verification_required),
                        patients, sessions (offsets, paging, filters, edit),
                        session-notes-access (a portal patient never gets clinician notes; a clinician
                        cannot change a colleague's session; unknown session ids → 404),
@@ -106,6 +115,11 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        THERAPIST 403 on writes; search + skip/limit totals; deactivated → gone from public booking;
                        structured location address round-trips)
 web/                   auth, guards, navigation, desk-no-kanban (the desk has no bell, no Tasks link, a follow-up tile that is not a link), patients, sessions, tasks-teams, task-assignee-filter (Assignee filter by any staff member, exact card counts, no-match state), kanban-comments (task dialog: comment + staff mention, history row; the mentioned therapist opens it from the bell), misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
+                       staff-invite (the Invite staff dialog validates and sends, role select staged behind a confirm (cancel sends nothing),
+                       a director is offered no ADMIN and cannot edit or remove an ADMIN row, the same answer for another clinic's account,
+                       the invitee's /auth/set-password → /auth/login → /auth/verify, Remove; the tab for a
+                       CLINICAL_DIRECTOR and not for a THERAPIST; an admin demoted while the page is open sees the server's
+                       refusal and the other admin stays ADMIN),
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
