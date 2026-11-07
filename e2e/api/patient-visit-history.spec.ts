@@ -1,7 +1,7 @@
 import { APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
-import { bookSession } from '../src/sessions';
+import { backdate, bookSession } from '../src/sessions';
 
 /**
  * GET /patients/ carries each listed patient's visit history from real sessions:
@@ -41,6 +41,7 @@ test.describe('/api/v1/patients/ visit history', () => {
       const cancelled = await session(api, patientId, 2);
       expect((await api.post(`/api/v1/sessions/${cancelled.id}/cancel`, { data: {} })).status()).toBe(200);
       const noShow = await session(api, patientId, 4);
+      await backdate(api, noShow.id); // no-show needs a session whose time has come
       expect((await api.post(`/api/v1/sessions/${noShow.id}/no-show`, { data: {} })).status()).toBe(200);
       const next = await session(api, patientId, 3);
       await session(api, patientId, 6);

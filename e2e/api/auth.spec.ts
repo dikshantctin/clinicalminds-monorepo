@@ -82,8 +82,14 @@ test.describe('authenticated auth endpoints', () => {
     }));
   });
 
-  test('POST /auth/logout succeeds', async ({ api }) => {
-    const res = await api.post('/api/v1/auth/logout');
+  test('POST /auth/logout succeeds', async ({ anon }) => {
+    // its own sign-in: logout now really ends the sign-in, and the shared E2E token must stay usable
+    const login = await anon.post('/api/v1/auth/login', { data: { email: env.EMAIL, password: env.PASSWORD } });
+    expect(login.status()).toBe(200);
+    const { access_token, tenant } = await login.json();
+    const res = await anon.post('/api/v1/auth/logout', {
+      headers: { Authorization: `Bearer ${access_token}`, 'X-Tenant-ID': tenant.id },
+    });
     expect(res.status()).toBe(200);
     expect((await res.json()).message).toContain('logged out');
   });
