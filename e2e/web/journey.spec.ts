@@ -3,6 +3,7 @@ import { env, uniq } from '../src/env';
 import { LoginPage } from '../src/pages/login.page';
 import { AddPatientPage } from '../src/pages/patients.page';
 import { adminApi, assignDemoClinicians } from '../src/catalog';
+import { openDay } from '../src/days';
 
 /**
  * One clinic, one day, through the browser only (the single API shortcut is time-travelling a
@@ -11,7 +12,7 @@ import { adminApi, assignDemoClinicians } from '../src/catalog';
  *   1. the admin logs in, publishes a service, registers a patient and schedules a session
  *   2. the patient books another slot through the public booking link
  *   3. the therapist logs in, sees both sessions and starts the online booking
- *   4. a session is missed → the admin finds it on the Follow-up queue
+ *   4. a session is missed → the admin finds it on the Follow-ups page
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -32,11 +33,7 @@ const localDateTime = (daysAhead: number, hour: number) => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
-const isoDate = (daysAhead: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + daysAhead);
-  return d.toISOString().slice(0, 10);
-};
+const isoDate = (daysAhead: number) => openDay(daysAhead); // public booking day: clinics are closed on Sunday
 
 async function loginAs(page: import('@playwright/test').Page, email: string, password: string) {
   const login = new LoginPage(page);
@@ -142,14 +139,14 @@ test.describe('end-to-end clinic journey', () => {
     expect(moved.status(), await moved.text()).toBe(200);
 
     await loginAs(page, env.EMAIL, env.PASSWORD);
-    await page.goto('/dashboard/tasks');
-    // The worker syncs a few seconds after the change; the button syncs now and reloads the board
+    await page.goto('/dashboard/follow-ups');
+    // The worker syncs a few seconds after the change; the button syncs now and reloads the list
     await page.getByTestId('followup-refresh').click();
     await expect(page.getByTestId('followup-summary')).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('combobox').first().selectOption({ label: 'Follow-up queue' });
-    // A busy queue shows each cell's first cards only; find the new one the way staff would
-    await page.getByPlaceholder('Search tasks...').fill(patientFullName);
-    await expect(page.getByText(`Missed session: ${patientFullName}`)).toHaveCount(1, { timeout: 15_000 });
+    await page.getByRole('searchbox').fill(patientFullName);
+    const row = page.getByTestId('followup-row').filter({ hasText: patientFullName });
+    await expect(row).toHaveCount(1, { timeout: 15_000 });
+    await expect(row).toContainText('Missed session');
   });
 
   test('5. cleanup', async ({ api }) => {

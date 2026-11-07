@@ -13,8 +13,16 @@ test.describe('route guards (logged out)', () => {
     });
   }
 
-  test('/ → /portal → login', async ({ page }) => {
+  test('/ on a device that never signed in opens the patient sign-in', async ({ page }) => {
     await page.goto('/');
+    await expect(page).toHaveURL(/\/portal\/login$/);
+  });
+
+  test('the sign-in pages link to each other', async ({ page }) => {
+    await page.goto('/auth/login');
+    await page.getByTestId('login-switch-patient').click();
+    await expect(page).toHaveURL(/\/portal\/login$/);
+    await page.getByTestId('login-switch-staff').click();
     await expect(page).toHaveURL(/\/auth\/login$/);
   });
 
