@@ -74,10 +74,10 @@ test.describe('front desk (SUPPORT_STAFF): no task boards in the browser', () =>
     });
   });
 
-  test('admin still sees the bell and a follow-up tile that opens Tasks', async ({ page }) => {
+  test('admin still sees the bell and a follow-up tile that opens the follow-up queue', async ({ page }) => {
     await page.goto(NAV.Overview);
     await expect(page.getByTestId('notification-bell')).toBeVisible();
-    await expect(page.getByTestId('overview-patients_needing_followup')).toHaveAttribute('href', NAV.Tasks);
+    await expect(page.getByTestId('overview-patients_needing_followup')).toHaveAttribute('href', '/dashboard/follow-ups');
     await expect(page.getByTestId('app-sidebar').locator(`a[href="${NAV.Tasks}"]`)).toBeVisible();
   });
 });
