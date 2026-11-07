@@ -1,7 +1,7 @@
 import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_THERAPIST } from '../src/env';
-import { bookSession, uniqueDay } from '../src/sessions';
+import { backdate, bookSession, uniqueDay } from '../src/sessions';
 
 test.describe('/api/v1/sessions', () => {
   requireApi();
@@ -78,6 +78,7 @@ test.describe('/api/v1/sessions', () => {
       expect((await api.post(`/api/v1/sessions/${a}/start`)).status(), 'start a cancelled session').toBe(409);
 
       const b = await mk();
+      await backdate(api, b); // complete straight from scheduled needs a session whose time has come
       expect((await api.post(`/api/v1/sessions/${b}/complete`)).status()).toBe(200);
       expect((await api.post(`/api/v1/sessions/${b}/no-show`)).status(), 'no-show a completed session').toBe(409);
       expect((await api.post(`/api/v1/sessions/${b}/cancel`)).status(), 'cancel a completed session').toBe(409);
@@ -103,14 +104,14 @@ test.describe('/api/v1/sessions', () => {
       expect(row.crisis_detected).toBe(true);
 
       await api.post('/api/v1/kanban/followups/sync');
-      let queue = await (await api.get('/api/v1/kanban/followups')).json();
+      let queue = await (await api.get('/api/v1/kanban/followups', { params: { related_patient_id: patient.id } })).json();
       const card = queue.items.find((t: { related_patient_id: string | null; reason: string }) => t.related_patient_id === patient.id && t.reason === 'risk_flag');
       expect(card, 'an urgent risk-flag card').toEqual(expect.objectContaining({ priority: 'urgent' }));
 
       expect((await api.put(`/api/v1/sessions/${session.id}`, { data: { risk_flag: false } })).status()).toBe(200);
       expect((await (await api.get(`/api/v1/sessions/${session.id}`)).json()).crisis_detected).toBe(false);
       await api.post('/api/v1/kanban/followups/sync');
-      queue = await (await api.get('/api/v1/kanban/followups')).json();
+      queue = await (await api.get('/api/v1/kanban/followups', { params: { related_patient_id: patient.id } })).json();
       expect(queue.items.some((t: { related_patient_id: string | null; reason: string }) => t.related_patient_id === patient.id && t.reason === 'risk_flag')).toBe(false);
     } finally {
       await api.delete(`/api/v1/patients/${patient.id}`);

@@ -21,9 +21,9 @@ test.describe('patient portal', () => {
     await expect(page.locator('button[type="submit"]')).toBeVisible();
   });
 
-  test('/portal content is protected', async ({ page }) => {
+  test('/portal content is protected: logged out, it opens the patient sign-in', async ({ page }) => {
     await page.goto('/portal');
-    await expect(page).toHaveURL(/\/auth\/login$/);
+    await expect(page).toHaveURL(/\/portal\/login$/);
   });
 });
 

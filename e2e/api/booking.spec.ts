@@ -1,16 +1,13 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 import { assignDemoClinicians, cleanupServices, createService } from '../src/catalog';
+import { openDay } from '../src/days';
 
 /** On VERIFICATION_TEST_PHONES → the backend skips the phone.email round-trip for this number. */
 const TEST_PHONE = '+919876543210';
 const DEMO_THERAPIST = { email: 'therapist.jane@democlinic.com', password: 'Password123!', name: 'Jane Doe' };
 
-const dayAfterTomorrow = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 2);
-  return d.toISOString().slice(0, 10);
-};
+const dayAfterTomorrow = () => openDay(2); // clinics are closed on Sunday
 
 const created: string[] = [];
 // free: these specs are about booking; api/payments.spec.ts covers priced services.
@@ -106,9 +103,7 @@ test.describe('public self-booking (/api/v1/public/booking)', () => {
     const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
     const practitioner = info.practitioners.find((p: { name: string }) => p.name === DEMO_THERAPIST.name);
     // a day no other spec books on, so the only contention is the one this test creates
-    const d = new Date();
-    d.setDate(d.getDate() + 7);
-    const slotParams = { practitioner_id: practitioner.id, service_id: service.id, date: d.toISOString().slice(0, 10) };
+    const slotParams = { practitioner_id: practitioner.id, service_id: service.id, date: openDay(7) };
     const { slots } = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}/slots`, { params: slotParams })).json();
     expect(slots.length).toBeGreaterThan(0);
     const book = (slot: string) =>

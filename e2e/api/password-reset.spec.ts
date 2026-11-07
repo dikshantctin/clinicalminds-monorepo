@@ -27,6 +27,11 @@ test.describe('password reset', () => {
   test('request → emailed link → new password works, the old one does not, the link is single-use', async ({ anon, api }) => {
     const acct = await portalAccount(api, OLD);
     try {
+      const signedIn = await anon.post('/api/v1/auth/login', {
+        data: { email: acct.email, password: OLD, audience: 'patient', remember: true },
+      });
+      expect(signedIn.status()).toBe(200);
+      const key: string = (await signedIn.json()).refresh_token;
       const req = await anon.post('/api/v1/auth/request-password-reset', { data: { email: acct.email.toUpperCase() } });
       expect(req.status()).toBe(200);
       expect((await req.json()).message).toBe(SAME_ANSWER);
@@ -36,6 +41,8 @@ test.describe('password reset', () => {
       expect(reset.status(), await reset.text()).toBe(200);
       expect(await loginStatus(acct.email, NEW)).toBe(200);
       expect(await loginStatus(acct.email, OLD)).toBe(401);
+      // every device is signed out: the sign-in from before the reset cannot be renewed
+      expect((await anon.post('/api/v1/auth/session/refresh', { data: { refresh_token: key } })).status()).toBe(401);
 
       const again = await anon.post('/api/v1/auth/reset-password', { data: { token, new_password: 'Another789!' } });
       expect(again.status()).toBe(400);

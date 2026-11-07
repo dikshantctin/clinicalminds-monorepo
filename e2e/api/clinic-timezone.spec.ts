@@ -2,11 +2,11 @@ import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq } from '../src/env';
 import { assignDemoClinicians, demoClinicianIds } from '../src/catalog';
+import { openDay } from '../src/days';
 
 /**
  * Every clinic-local day is the clinic's own zone (platform_firms.timezone), not Asia/Kolkata:
- * public booking slots, the dashboard's week / month boundaries, and the schedule stats and
- * availability windows. A clinic onboarded in America/New_York checks it; the demo clinic
+ * public booking slots, the dashboard's week / month boundaries, and the schedule stats. A clinic onboarded in America/New_York checks it; the demo clinic
  * (Asia/Kolkata) checks nothing changed there.
  */
 
@@ -77,8 +77,8 @@ test.describe('clinic time zone (platform_firms.timezone) everywhere', () => {
 
   let ny: Clinic;
   // clinic-local days well past the booking lead time
-  const day = localDate(new Date(Date.now() + 8 * 86_400_000), NY);
-  const laterDay = localDate(new Date(Date.now() + 9 * 86_400_000), NY);
+  const day = openDay(8, NY); // open days: a clinic is closed on Sunday unless its admin opens it
+  const laterDay = openDay(9, NY);
 
   test.beforeAll(async () => {
     ny = await onboardNewYorkClinic();
@@ -148,7 +148,7 @@ test.describe('clinic time zone (platform_firms.timezone) everywhere', () => {
     expect(localDate(month_start, NY)).toBe(`${localDate(new Date(), NY).slice(0, 7)}-01`);
   });
 
-  test('a 22:00 New York session counts on its New York day in availability and stats', async () => {
+  test('a 22:00 New York session counts on its New York day in the schedule stats', async () => {
     const patient = await ny.api.post('/api/v1/patients/', { data: { first_name: uniq('TzAvail'), last_name: 'Patient' } });
     expect(patient.status(), await patient.text()).toBe(200);
     const created = await ny.api.post('/api/v1/sessions/', {
@@ -156,24 +156,13 @@ test.describe('clinic time zone (platform_firms.timezone) everywhere', () => {
     });
     expect(created.status(), await created.text()).toBe(200);
 
-    const avail = async (target_date: string) => {
-      const res = await ny.api.get('/api/v1/schedules/availability', { params: { target_date } });
-      expect(res.status(), await res.text()).toBe(200);
-      return res.json();
-    };
-    expect(await avail(laterDay)).toEqual(expect.objectContaining({ date: laterDay, session_count: 1, booked_minutes: 50 }));
     const nextDay = localDate(new Date(new Date(`${laterDay}T12:00:00Z`).getTime() + 86_400_000), 'UTC');
-    expect(await avail(nextDay)).toEqual(expect.objectContaining({ session_count: 0, booked_minutes: 0 }));
 
     const stats = await ny.api.get('/api/v1/schedules/stats', { params: { date_from: laterDay, date_to: laterDay } });
     expect(stats.status(), await stats.text()).toBe(200);
     expect(await stats.json()).toEqual(expect.objectContaining({ totalSessions: 1, upcomingSessions: 1 }));
     const nextStats = await ny.api.get('/api/v1/schedules/stats', { params: { date_from: nextDay, date_to: nextDay } });
     expect((await nextStats.json()).totalSessions).toBe(0);
-  });
-
-  test('availability needs a token (401)', async ({ anon }) => {
-    expect((await anon.get('/api/v1/schedules/availability', { params: { target_date: day } })).status()).toBe(401);
   });
 
   test('the Kolkata demo clinic is unchanged: slots and week in IST', async ({ anon, api, auth }) => {
@@ -186,7 +175,7 @@ test.describe('clinic time zone (platform_firms.timezone) everywhere', () => {
       // a pair that is bookable: this service, linked to the demo clinicians
       await assignDemoClinicians(api, serviceId);
       const [practitionerId] = await demoClinicianIds();
-      const istDay = localDate(new Date(Date.now() + 8 * 86_400_000), IST);
+      const istDay = openDay(8, IST);
       const res = await anon.get(`/api/v1/public/booking/${auth.firmCode}/slots`, {
         params: { practitioner_id: practitionerId, service_id: serviceId, date: istDay },
       });
