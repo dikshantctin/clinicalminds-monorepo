@@ -60,7 +60,9 @@ npx playwright test api/patients.spec.ts -g "create"   # one spec / one test
   the `web` project — the same keys `frontend/src/context/AuthContext.tsx` rehydrates from.
 
 Specs that must start logged out (`web/auth.spec.ts`, `web/guards.spec.ts`,
-`web/portal-onboarding.spec.ts`) override `storageState` to empty.
+`web/portal-onboarding.spec.ts`, `web/stay-signed-in.spec.ts`) override `storageState` to empty.
+The seeded access token lasts 1 h and the storage state carries no `refresh_token`, so a run longer than an hour
+would see logged-out pages.
 
 ## Layout
 
@@ -73,13 +75,20 @@ src/outbox.ts          reads the backend's dev email outbox (EMAIL_OUTBOX_DIR in
 src/pages/             page objects (login, dashboard nav + headings, add-patient form)
 api/                   health, auth, security (guards, tenant isolation, permissions),
                        role-access (table: route × role → exact 401/403/200; PATIENT needs a seeded
-                       patient.demo@democlinic.com login), patient-portal (invite → set password → portal
+                       patient.demo@democlinic.com login), desk-no-kanban (SUPPORT_STAFF → 403 on every
+                       /kanban and /teams route it tries, notifications and follow-ups included; ADMIN / THERAPIST 200), patient-portal (invite → set password → portal
                        login; the login audience picks staff vs PATIENT; an invite never overwrites a password),
                        patients, sessions (offsets, paging, filters, edit),
                        session-notes-access (a portal patient never gets clinician notes; a clinician
                        cannot change a colleague's session; unknown session ids → 404),
                        schedules (daily schedule in the clinic time zone),
-                       kanban, teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
+                       front-desk-access (SUPPORT_STAFF in its own onboarded clinic: walk-in 200, no clinical keys in
+                       patient/session responses, its booking goes to the patient's assigned clinician, 403 on clinical writes and delete, desk payment, no-show, outcome,
+                       clinic-wide daily/weekly schedule while a therapist still sees only their own),
+                       session-double-booking (409 clash, admin override with a reason; a therapist's or the front desk's
+                       override is 403 and changes nothing, the desk's plain clash 409, its move to a free time 200; the desk
+                       booking a named clinician's taken time: 403 with a reason, 409 without, the clinician's day unchanged),
+                       kanban, kanban-comments (author_name / user_name, history newest first and capped at 50, plain status values, no description text; 401 / 403 PATIENT / 422), teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
                        booking (public self-booking: info, slots, booking → clinic + therapist lists, 409/400),
@@ -90,22 +99,44 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        overview also covers: no-show via POST …/no-show (status is not a PUT field), the 24 h stale
                        sweep, desk payments → revenue, clinician scope (logs in as the seeded psychologist, skips if
                        that login is blocked); sessions covers cancel/no-show guards and the clinician risk flag → queue,
-                       followups (missed session → card, idempotent sync, closed cards stay closed), deid
+                       followups (missed session → card, idempotent sync, closed cards stay closed), deid,
+                       stay-signed-in (refresh keys: 1 h access token, 24 h / 7 d / 30 d sign-ins, rotation, 409 on a
+                       just-replaced key, logout and garbage keys → 401)
                        catalog (services/locations: 422 for blank name, duration <= 0, negative or 3-decimal price;
                        THERAPIST 403 on writes; search + skip/limit totals; deactivated → gone from public booking;
                        structured location address round-trips)
-web/                   auth, guards, navigation, patients, sessions, tasks-teams, task-assignee-filter (Assignee filter by any staff member, exact card counts, no-match state), misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
+web/                   auth, guards, navigation, desk-no-kanban (the desk has no bell, no Tasks link, a follow-up tile that is not a link), patients, sessions, tasks-teams, task-assignee-filter (Assignee filter by any staff member, exact card counts, no-match state), kanban-comments (task dialog: comment + staff mention, history row; the mentioned therapist opens it from the bell), misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
                        verification (/auth/verify gate for the seeded unverified intern; Settings badges),
                        booking (/book/<firmCode> end to end with a free service and a test-listed phone; "Booked online" badge),
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
                        never on the page; Remove webhook secret clears it and is absent when none is stored;
                        a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
+                       mobile-shell (390 px, nothing scrolls sideways: staff shell, patient sign-in / portal /
+                       set-password, public booking through slot choice, patients, a patient, sessions, tasks,
+                       follow-ups),
                        sessions also: mark no-show from the list, record a cash payment, save a risk flag on the detail page,
+                       front-desk (SUPPORT_STAFF: Patients + Sessions in the nav, walk-in without clinical fields, no Clinical
+                       Data tab, no risk badge / Notes column / risk-flag card, records a payment; Edit patient shows the desk
+                       contact fields only, an admin also Status / diagnoses / risk factors / intake notes),
                        journey (serial, browser-only clinic day: admin publishes a service, registers a patient,
                        schedules a session → patient books online → therapist starts it → missed session shows on
                        the Follow-up queue; the one API shortcut moves a session into the past)
                        catalog (/admin/services, /admin/locations: sidebar links, add with validation, search, edit,
-                       deactivate and delete with confirmation, status filter, server paging)
+                       deactivate and delete with confirmation, status filter, server paging),
+                       stay-signed-in ("Stay signed in" box unticked on both sign-ins; an expired access token is
+                       renewed quietly on the dashboard and portal; no / bad refresh key → the right sign-in; logout
+                       ends the sign-in so its refresh key gets 401),
+                       pwa-manifest (installable app: manifest fields, 192/512/maskable icons served as PNG, every
+                       icon link resolves, no "AI/crisis" wording, old /site.webmanifest gone),
+                       pwa-offline (service worker registered on the production build; offline the sign-in still
+                       opens with the offline notice; API responses never come from the service worker; the cache holds
+                       only static app files before and after logout),
+                       pwa-update (a new version is offered in every tab; Reload switches only its own tab, an
+                       unsaved form in another tab survives; Later dismisses),
+                       pwa-install ("Install app" card: shown on Chrome's install offer (faked) for patients and staff,
+                       iPhone gets the Add to Home Screen hint, Not now hides it for 30 days, hidden when installed,
+                       keyboard + named region, in the page flow at 390 px). The web project blocks service workers;
+                       only these specs allow them.
 ```
 
 Specs create their own data with unique names (`uniq()`) and clean up in `finally` blocks. Catalog services

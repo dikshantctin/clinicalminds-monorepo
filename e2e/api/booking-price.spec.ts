@@ -1,6 +1,7 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 import { assignDemoClinicians } from '../src/catalog';
+import { openDay } from '../src/days';
 
 /**
  * The catalog stores a service price in rupees; a booking charges `round(price * 100)` paise, and only
@@ -11,11 +12,7 @@ import { assignDemoClinicians } from '../src/catalog';
 const TEST_PHONE = '+919876543210'; // test-listed: no phone.email round-trip
 
 // a day no other spec books on (booking/journey day+2, api payments day+3, web payments day+4)
-const bookingDate = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 6);
-  return d.toISOString().slice(0, 10);
-};
+const bookingDate = () => openDay(6);
 
 async function createService(api: any, price: number) {
   const res = await api.post('/api/v1/catalog/services', {

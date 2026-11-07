@@ -126,6 +126,8 @@ test.describe('follow-up cards are scoped to the clinician', () => {
     psych: ['seen', 'theirs'],
     intern: ['intern'],
   };
+  // /patients/stats counts over the caller's own patients: the therapist only sees 'seen' through a session
+  const ownPatients: Record<Exclude<Who, 'support'>, Key[]> = { ...sees, therapist: ['mine'] };
 
   test('GET /kanban/followups: items, total and reason counts', async () => {
     for (const [who, keys] of Object.entries(sees) as Array<[Who, Key[]]>) {
@@ -157,7 +159,7 @@ test.describe('follow-up cards are scoped to the clinician', () => {
     const card = `/api/v1/kanban/tasks/${cards.theirs}`;
     expect((await t.get(card)).status()).toBe(404);
     expect((await t.put(card, { data: { title: 'not mine' } })).status()).toBe(404);
-    expect((await t.post(`${card}/move`, { data: { status: 'in_progress', position: 0 } })).status()).toBe(404);
+    expect((await t.post(`${card}/move`, { data: { status: 'in_progress' } })).status()).toBe(404);
     expect((await t.get(`${card}/comments`)).status()).toBe(404);
     expect((await t.post(`${card}/comments`, { data: { content: 'not mine' } })).status()).toBe(404);
     expect((await t.delete(card)).status()).toBe(404);
@@ -213,10 +215,28 @@ test.describe('follow-up cards are scoped to the clinician', () => {
       const tile = await ok<{ patients_needing_followup: number }>(await c.get('/api/v1/analytics/overview'));
       const patientStats = await ok<{ patients_needing_follow_up: number }>(await c.get('/api/v1/patients/stats'));
       expect({ who, stats: stats.total_tasks, tile: tile.patients_needing_followup, patients: patientStats.patients_needing_follow_up })
-        .toEqual({ who, stats: keys.length, tile: keys.length, patients: keys.length });
+        .toEqual({ who, stats: keys.length, tile: keys.length, patients: ownPatients[who as Exclude<Who, 'support'>].length });
     }
-    const support = await ok<{ patients_needing_followup: number }>(await as.support.ctx.get('/api/v1/analytics/overview'));
-    expect(support.patients_needing_followup).toBe(0);
+  });
+
+  test('the front desk has no task boards and counts no follow-ups', async () => {
+    const s = as.support.ctx;
+    const paths = [
+      ['get', '/api/v1/kanban/followups'],
+      ['get', '/api/v1/kanban/tasks'],
+      ['get', `/api/v1/kanban/tasks/${cards.mine}`],
+      ['get', `/api/v1/kanban/boards/${queue}`],
+      ['get', `/api/v1/kanban/boards/${queue}/view`],
+      ['get', '/api/v1/kanban/notifications'],
+      ['post', '/api/v1/kanban/followups/sync'],
+    ] as const;
+    for (const [method, path] of paths) {
+      expect({ path, status: (await s[method](path)).status() }).toEqual({ path, status: 403 });
+    }
+    const tile = await ok<{ patients_needing_followup: number }>(await s.get('/api/v1/analytics/overview'));
+    expect(tile.patients_needing_followup).toBe(0);
+    const patientStats = await ok<{ patients_needing_follow_up: number }>(await s.get('/api/v1/patients/stats'));
+    expect(patientStats.patients_needing_follow_up).toBe(0);
   });
 
   test('POST /followups/sync tells a clinician only about their own cards', async () => {
@@ -244,14 +264,39 @@ test.describe('follow-up cards are scoped to the clinician', () => {
       return list.filter((n) => n.task_id === cards.theirs);
     };
     expect(await about('therapist')).toEqual([]);
-    expect(await about('support')).toEqual([]);
     expect(await about('intern')).toEqual([]);
     const psych = await about('psych');
-    // the sync assigned the card to him, so the reassignment tells him too
+    // the sync assigned the card to the psychologist, so the reassignment tells them too
     expect(psych.map((n) => n.type).sort()).toEqual(['mentioned', 'unassigned']);
     for (const n of psych) {
       expect(n.message).toContain('a follow-up card');
       expect(n.message).not.toContain(names.theirs);
     }
+  });
+  test('a cancelled session gives no access; a live one still does', async () => {
+    // runs last: it adds a fifth flagged patient, which the exact counts above don't expect
+    const d = as.director.ctx;
+    const t = as.therapist.ctx;
+    const patient = await ok<{ id: string }>(await d.post('/api/v1/patients/', {
+      data: { first_name: `${slug}cancelled`, last_name: 'Patient', assigned_therapist_id: as.therapist.userId },
+    }));
+    const at = (h: number) => new Date(Date.now() + 5 * 86_400_000 + h * 3_600_000).toISOString();
+    const booked = await ok<{ id: string }>(await t.post('/api/v1/sessions/', {
+      data: { patient_id: patient.id, scheduled_at: at(0), duration_minutes: 50 },
+    }));
+    await ok(await t.post(`/api/v1/sessions/${booked.id}/cancel`, { data: { reason: 'patient asked' } }));
+    await ok(await d.put(`/api/v1/patients/${patient.id}`, { data: { assigned_therapist_id: as.psych.userId } }));
+    const flagged = await ok<{ id: string }>(await as.psych.ctx.post('/api/v1/sessions/', {
+      data: { patient_id: patient.id, scheduled_at: at(3), duration_minutes: 50 },
+    }));
+    await ok(await d.put(`/api/v1/sessions/${flagged.id}`, { data: { risk_flag: true, risk_level: 'high' } }));
+    await ok(await d.post('/api/v1/kanban/followups/sync'));
+
+    const all = await ok<{ items: Card[] }>(await d.get('/api/v1/kanban/followups', { params: { per_page: 100 } }));
+    const card = all.items.find((i) => i.related_patient_id === patient.id)!.id;
+    expect((await as.psych.ctx.get(`/api/v1/kanban/tasks/${card}`)).status()).toBe(200);
+    expect((await t.get(`/api/v1/kanban/tasks/${card}`)).status()).toBe(404);
+    const theirs = await ok<{ items: Card[] }>(await t.get('/api/v1/kanban/followups'));
+    expect(ids(theirs.items)).toEqual(expected('mine', 'seen')); // 'seen' still comes through a live session
   });
 });

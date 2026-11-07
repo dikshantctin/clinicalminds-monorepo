@@ -1,6 +1,6 @@
 import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { env, uniq, RANDOM_UUID, DEMO_THERAPIST } from '../src/env';
+import { env, uniq, RANDOM_UUID, DEMO_THERAPIST, DEMO_PATIENT } from '../src/env';
 
 /**
  * Task comments: the task comes from the path (the body carries only content + mentions), and an @mention
@@ -9,7 +9,9 @@ import { env, uniq, RANDOM_UUID, DEMO_THERAPIST } from '../src/env';
  */
 async function loginAs(creds: { email: string; password: string }) {
   const anon = await pwRequest.newContext({ baseURL: env.API_URL });
-  const res = await anon.post('/api/v1/auth/login', { data: { ...creds, audience: 'staff' } });
+  // a patient logs in through the portal (audience "patient"); everyone else through the staff login
+  const audience = creds === DEMO_PATIENT ? 'patient' : 'staff';
+  const res = await anon.post('/api/v1/auth/login', { data: { ...creds, audience } });
   expect(res.status(), await res.text()).toBe(200);
   const body = await res.json();
   await anon.dispose();
@@ -85,6 +87,80 @@ test.describe('/api/v1/kanban/tasks/{id}/comments', () => {
       expect(await (await api.get(`/api/v1/kanban/tasks/${taskId}/comments`)).json()).toEqual([]);
     } finally {
       await api.delete(`/api/v1/kanban/boards/${boardId}?hard_delete=true`);
+    }
+  });
+
+  test('task details name comment authors and activity actors; history is newest first; values are plain', async ({ api }) => {
+    const { boardId, taskId } = await newTask(api);
+    const secret = uniq('private detail');
+    try {
+      expect((await api.put(`/api/v1/kanban/tasks/${taskId}`, { data: { status: 'in_progress' } })).status()).toBe(200);
+      expect((await api.put(`/api/v1/kanban/tasks/${taskId}`, { data: { description: secret } })).status()).toBe(200);
+      const res = await api.post(`/api/v1/kanban/tasks/${taskId}/comments`, { data: { content: 'looks good' } });
+      expect(res.status(), await res.text()).toBe(200);
+      const comment = await res.json();
+      expect(comment.author_name).toBe('Demo Admin');
+
+      const list = await (await api.get(`/api/v1/kanban/tasks/${taskId}/comments`)).json();
+      expect(list.map((c: { id: string; author_name: string }) => [c.id, c.author_name])).toEqual([[comment.id, 'Demo Admin']]);
+
+      const detail = await (await api.get(`/api/v1/kanban/tasks/${taskId}`)).json();
+      expect(detail.comments.map((c: { content: string; author_name: string }) => [c.content, c.author_name])).toEqual([
+        ['looks good', 'Demo Admin'],
+      ]);
+      type Activity = { action: string; user_name: string; old_value: string | null; new_value: string | null };
+      const activities: Activity[] = detail.recent_activities;
+      expect(activities.map((a) => a.action)).toEqual(['commented', 'updated_description', 'updated_status', 'created']);
+      expect(activities.map((a) => a.user_name)).toEqual(['Demo Admin', 'Demo Admin', 'Demo Admin', 'Demo Admin']);
+      expect(activities[2]).toEqual(expect.objectContaining({ old_value: 'todo', new_value: 'in_progress' }));
+      // a description may hold clinical detail: the history says it changed, never what it said
+      expect(activities[1]).toEqual(expect.objectContaining({ old_value: null, new_value: null }));
+      expect(JSON.stringify(activities)).not.toContain(secret);
+    } finally {
+      await api.delete(`/api/v1/kanban/boards/${boardId}?hard_delete=true`);
+    }
+  });
+
+  test('task details return the 50 newest activities', async ({ api }) => {
+    const { boardId, taskId } = await newTask(api);
+    try {
+      for (let i = 1; i <= 51; i++) {
+        const res = await api.post(`/api/v1/kanban/tasks/${taskId}/comments`, { data: { content: `note ${i}` } });
+        expect(res.status(), await res.text()).toBe(200);
+      }
+      const detail = await (await api.get(`/api/v1/kanban/tasks/${taskId}`)).json();
+      expect(detail.comments).toHaveLength(51);
+      expect(detail.recent_activities).toHaveLength(50);
+      expect(detail.recent_activities[0].details.comment_preview).toBe('note 51');
+      expect(detail.recent_activities[49].details.comment_preview).toBe('note 2'); // "note 1" and "created" fall off
+    } finally {
+      await api.delete(`/api/v1/kanban/boards/${boardId}?hard_delete=true`);
+    }
+  });
+
+  test('empty content → 422, nothing saved', async ({ api }) => {
+    const { boardId, taskId } = await newTask(api);
+    try {
+      expect((await api.post(`/api/v1/kanban/tasks/${taskId}/comments`, { data: { content: '' } })).status()).toBe(422);
+      expect(await (await api.get(`/api/v1/kanban/tasks/${taskId}/comments`)).json()).toEqual([]);
+    } finally {
+      await api.delete(`/api/v1/kanban/boards/${boardId}?hard_delete=true`);
+    }
+  });
+
+  test('no token → 401 and a PATIENT token → 403 on both comment routes', async ({ api, anon }) => {
+    const { boardId, taskId } = await newTask(api);
+    const patient = await loginAs(DEMO_PATIENT);
+    const path = `/api/v1/kanban/tasks/${taskId}/comments`;
+    try {
+      expect((await anon.get(path)).status()).toBe(401);
+      expect((await anon.post(path, { data: { content: 'x' } })).status()).toBe(401);
+      expect((await patient.ctx.get(path)).status()).toBe(403);
+      expect((await patient.ctx.post(path, { data: { content: 'x' } })).status()).toBe(403);
+      expect(await (await api.get(path)).json()).toEqual([]);
+    } finally {
+      await api.delete(`/api/v1/kanban/boards/${boardId}?hard_delete=true`);
+      await patient.ctx.dispose();
     }
   });
 });
