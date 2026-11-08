@@ -2,7 +2,7 @@ import { request as pwRequest, APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_PATIENT, DEMO_THERAPIST, DEMO_PSYCHOLOGIST } from '../src/env';
 import { CLASH, uniqueDay } from '../src/sessions';
-import { deleteClinic } from '../src/clinics';
+import { deleteClinic, makeDirector } from '../src/clinics';
 
 /**
  * Staff book a session with a chosen clinician (POST /sessions/ therapist_id): an admin, director or front
@@ -177,13 +177,14 @@ test.describe('POST /api/v1/sessions/ by the front desk', () => {
         },
         plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
         admin: { email: `admin.${slug}@example.com`, password: 'Password123!', first_name: 'Desk', last_name: 'Director', phone },
-        admin_role: 'CLINICAL_DIRECTOR',
-        team_members: [member('desk', 'SUPPORT_STAFF'), member('thera', 'THERAPIST')],
+        admin_role: 'ADMIN', // the registrant; the director joins as a team member and is made director below
+        team_members: [member('director', 'PSYCHOLOGIST'), member('desk', 'SUPPORT_STAFF'), member('thera', 'THERAPIST')],
       },
     });
     expect(onboarded.status(), await onboarded.text()).toBe(200);
     await anon.dispose();
-    director = await login({ email: `admin.${slug}@example.com`, password: 'Password123!' });
+    await makeDirector(`admin.${slug}@example.com`, `director.${slug}@example.com`);
+    director = await login({ email: `director.${slug}@example.com`, password: 'Password123!' });
     desk = await login({ email: `desk.${slug}@example.com`, password: 'Password123!' });
     const thera = await login({ email: `thera.${slug}@example.com`, password: 'Password123!' });
     therapistId = thera.id;
