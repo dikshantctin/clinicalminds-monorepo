@@ -1,7 +1,7 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq, RANDOM_UUID } from '../src/env';
 import { deleteClinic, inviteStaff, loginAs, onboardClinic, CLINIC_PASSWORD } from '../src/clinics';
-import { inviteTokenFor, lastEmailTo } from '../src/outbox';
+import { emailsTo, inviteTokenFor, lastEmailTo } from '../src/outbox';
 import { staffInviteToken } from '../src/invite-token';
 
 /**
@@ -213,6 +213,60 @@ test.describe('staff invite, role change, removal', () => {
       expect((await users(adminSession.ctx, tenantId)).find((u) => u.id === director.user.id)?.role).toBe('CLINICAL_DIRECTOR');
     } finally {
       await adminSession.ctx.dispose();
+      await deleteClinic(owner);
+    }
+  });
+
+  test('re-inviting someone who never set a password sends a new link (a failed email can be retried); active → 409', async ({ anon }) => {
+    // the membership is saved before the email goes out, so a 503 leaves a pending member: inviting again resends
+    const { owner } = await onboardClinic(anon);
+    const admin = await loginAs(owner);
+    const tenantId = admin.tenant.id;
+    const invitee = email('retry');
+    try {
+      const first = await inviteStaff(admin.ctx, tenantId, { email: invitee, role: 'THERAPIST' });
+      expect(first.status(), await first.text()).toBe(200);
+      expect(emailsTo(invitee)).toBe(1);
+
+      const again = await inviteStaff(admin.ctx, tenantId, { email: invitee.toUpperCase(), role: 'PSYCHOLOGIST' });
+      expect(again.status(), await again.text()).toBe(200);
+      expect(await again.json()).toEqual({ message: 'Invitation sent', email: invitee });
+      expect(emailsTo(invitee)).toBe(2);
+      const rows = (await users(admin.ctx, tenantId)).filter((u) => u.email === invitee);
+      expect(rows.map((r) => [r.role, r.status])).toEqual([['PSYCHOLOGIST', 'pending']]);
+
+      // the new link activates the account with the new role
+      const set = await anon.post('/api/v1/auth/set-password', { data: { token: inviteTokenFor(invitee), password: NEW_PASSWORD } });
+      expect(set.status(), await set.text()).toBe(200);
+      const member = await loginAs(invitee, NEW_PASSWORD);
+      expect(member.user.role).toBe('PSYCHOLOGIST');
+      await member.ctx.dispose();
+
+      const active = await inviteStaff(admin.ctx, tenantId, { email: invitee, role: 'INTERN' });
+      expect(active.status()).toBe(409);
+      expect(await message(active)).toBe('This person is already a member of this clinic');
+      expect(emailsTo(invitee)).toBe(2);
+    } finally {
+      await admin.ctx.dispose();
+      await deleteClinic(owner);
+    }
+  });
+
+  test('a pending ADMIN is re-invited only by an ADMIN', async ({ anon }) => {
+    const pendingAdmin = email('padmin');
+    const { owner } = await onboardClinic(anon, { ownerRole: 'CLINICAL_DIRECTOR', team: [{ email: pendingAdmin, role: 'ADMIN', invite: true }] });
+    const director = await loginAs(owner);
+    const tenantId = director.tenant.id;
+    try {
+      const sent = emailsTo(pendingAdmin);
+      const demote = await inviteStaff(director.ctx, tenantId, { email: pendingAdmin, role: 'THERAPIST' });
+      expect(demote.status(), await demote.text()).toBe(403);
+      expect(await message(demote)).toBe('Only an admin can grant, change or remove the admin role');
+      expect(emailsTo(pendingAdmin)).toBe(sent);
+      const row = (await users(director.ctx, tenantId)).find((u) => u.email === pendingAdmin);
+      expect([row!.role, row!.status]).toEqual(['ADMIN', 'pending']);
+    } finally {
+      await director.ctx.dispose();
       await deleteClinic(owner);
     }
   });
