@@ -119,6 +119,20 @@ test.describe('public booking pays the clinic', () => {
 
   test('a Rs 1 service reaches the pay step and opens Razorpay Checkout', async ({ page, api, auth }) => {
     test.skip(!(await gatewayReady(api)), NO_GATEWAY);
+    // Record the options the page passes to Razorpay Checkout (the real checkout.js still opens)
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'Razorpay', {
+        configurable: true,
+        get: () => undefined,
+        set(Real: new (options: unknown) => unknown) {
+          const Recording = function (options: unknown) {
+            (window as unknown as { __rzpOptions: unknown }).__rzpOptions = options;
+            return new Real(options);
+          };
+          Object.defineProperty(window, 'Razorpay', { value: Recording, writable: true, configurable: true });
+        },
+      });
+    });
     const service = await createService(api, created, { name: uniq('Rs 1 test consult'), price: 1 });
     await assignDemoClinicians(api, service.id);
 
@@ -145,6 +159,9 @@ test.describe('public booking pays the clinic', () => {
       await page.getByTestId('booking-pay').click();
       // Razorpay Checkout mounts its own iframe, opened with the clinic's key
       await expect(page.locator('iframe.razorpay-checkout-frame')).toBeAttached({ timeout: 20_000 });
+      // NPCI retired UPI Collect (28 Feb 2026): Razorpay requires hiding its flow, and desktop then shows the UPI QR
+      const options = await page.evaluate(() => (window as unknown as { __rzpOptions: { config?: unknown } }).__rzpOptions);
+      expect(options.config).toEqual({ display: { hide: [{ method: 'upi', flows: ['collect'] }] } });
       const row = (await (await api.get('/api/v1/sessions/', { params: { limit: 500 } })).json()).sessions.find((s: { id: string }) => s.id === reference);
       expect(row).toEqual(expect.objectContaining({ booked_via: 'web', payment_status: 'pending', amount_paise: 100 }));
     } finally {
