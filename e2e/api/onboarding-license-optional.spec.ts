@@ -23,7 +23,7 @@ test.describe('onboarding: license number is optional', () => {
   requireApi();
   const owners: string[] = [];
   test.afterAll(async () => {
-    for (const owner of owners) await deleteClinic(owner);
+    for (const owner of owners.splice(0)) await deleteClinic(owner); // afterAll runs per test (fullyParallel)
   });
 
   test('validate accepts a therapist with no license and a psychologist with an empty one', async ({ anon }) => {

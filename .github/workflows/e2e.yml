@@ -220,7 +220,16 @@ jobs:
           # the optional "validate a fresh pair" write-path specs (Razorpay TEST mode)
           E2E_RAZORPAY_KEY_ID: ${{ secrets.E2E_RAZORPAY_KEY_ID }}
           E2E_RAZORPAY_KEY_SECRET: ${{ secrets.E2E_RAZORPAY_KEY_SECRET }}
-        run: npx playwright test --project=api --project=web --shard=${{ matrix.shard }}/3 --reporter=list,blob
+        # Each project is sharded on its own: --shard splits by test COUNT, and one run over api+web handed the last
+        # shard nearly all the (slow) browser tests. A third of api and a third of web per shard evens the time out.
+        # Both runs always go; the step fails if either did.
+        run: |
+          status=0
+          PLAYWRIGHT_BLOB_OUTPUT_FILE=blob-report/api-${{ matrix.shard }}.zip \
+            npx playwright test --project=api --shard=${{ matrix.shard }}/3 --reporter=list,blob || status=1
+          PLAYWRIGHT_BLOB_OUTPUT_FILE=blob-report/web-${{ matrix.shard }}.zip \
+            npx playwright test --project=web --shard=${{ matrix.shard }}/3 --reporter=list,blob || status=1
+          exit $status
 
       - name: Service logs
         if: failure()
@@ -228,6 +237,18 @@ jobs:
           tail -n 200 /tmp/backend.log || true
           tail -n 100 /tmp/worker.log || true
           tail -n 100 /tmp/frontend.log || true
+
+      # Each shard's backend + follow-up worker logs, kept 3 days, for failures that pass on retry and leave no trace in
+      # the job log (the step above only prints a tail when the job fails). Checked: no tokens, keys, passwords or links.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: service-logs-${{ matrix.shard }}
+          path: |
+            /tmp/backend.log
+            /tmp/worker.log
+          if-no-files-found: ignore
+          retention-days: 3
 
       # the blob holds this shard's results with their traces and screenshots; merge-reports builds the HTML from it
       - uses: actions/upload-artifact@v4

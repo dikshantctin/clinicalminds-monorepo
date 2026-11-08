@@ -24,7 +24,7 @@ test.describe('onboarding: the registrant is the ADMIN', () => {
   requireApi();
   const owners: string[] = [];
   test.afterAll(async () => {
-    for (const owner of owners) await deleteClinic(owner);
+    for (const owner of owners.splice(0)) await deleteClinic(owner); // afterAll runs per test (fullyParallel)
   });
 
   test('admin_role CLINICAL_DIRECTOR is ignored: the registrant is created as ADMIN and is not bookable', async ({ anon }) => {
