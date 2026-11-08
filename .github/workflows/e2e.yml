@@ -220,7 +220,16 @@ jobs:
           # the optional "validate a fresh pair" write-path specs (Razorpay TEST mode)
           E2E_RAZORPAY_KEY_ID: ${{ secrets.E2E_RAZORPAY_KEY_ID }}
           E2E_RAZORPAY_KEY_SECRET: ${{ secrets.E2E_RAZORPAY_KEY_SECRET }}
-        run: npx playwright test --project=api --project=web --shard=${{ matrix.shard }}/3 --reporter=list,blob
+        # Each project is sharded on its own: --shard splits by test COUNT, and one run over api+web handed the last
+        # shard nearly all the (slow) browser tests. A third of api and a third of web per shard evens the time out.
+        # Both runs always go; the step fails if either did.
+        run: |
+          status=0
+          PLAYWRIGHT_BLOB_OUTPUT_FILE=blob-report/api-${{ matrix.shard }}.zip \
+            npx playwright test --project=api --shard=${{ matrix.shard }}/3 --reporter=list,blob || status=1
+          PLAYWRIGHT_BLOB_OUTPUT_FILE=blob-report/web-${{ matrix.shard }}.zip \
+            npx playwright test --project=web --shard=${{ matrix.shard }}/3 --reporter=list,blob || status=1
+          exit $status
 
       - name: Service logs
         if: failure()
