@@ -162,6 +162,8 @@ jobs:
         run: |
           python scripts/setup_demo_data.py
           python scripts/demo_data.py import scripts/fixtures/demo_clinic.json
+          # the seed never grants platform staff (its password is in the repo); the /docs specs need one
+          python scripts/platform_staff.py grant platform.staff@example.com --by e2e-ci
 
       - name: Connect the demo clinic's Razorpay TEST account (the payments specs skip without one)
         working-directory: backend
