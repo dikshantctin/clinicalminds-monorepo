@@ -32,11 +32,16 @@ test.describe('support address', () => {
     expect(text).not.toContain('clinicalmind.app');
   });
 
-  test('GET / (signed in) names support@psyclinicalmind.com; without a token it is 401', async ({ api, anon }) => {
+  // GET / is a plain identity answer: no marketing copy, no feature claims, no old brand, nothing else.
+  test('GET / (signed in) is exactly name, status and support; without a token it is 401', async ({ api, anon }) => {
     requireAuth();
     const res = await api.get('/');
     expect(res.status()).toBe(200);
-    expect((await res.json()).support).toBe('support@psyclinicalmind.com');
+    expect(await res.json()).toEqual({
+      name: 'PsyClinicalMind API',
+      status: 'ok',
+      support: 'support@psyclinicalmind.com',
+    });
     expect((await anon.get('/')).status()).toBe(401);
   });
 });
