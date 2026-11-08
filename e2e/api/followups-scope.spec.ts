@@ -292,8 +292,14 @@ test.describe('follow-up cards are scoped to the clinician', () => {
     }).toEqual({
       therapist: false, psych: true, intern: false, director: true, support: false, seenByTherapist: true, unknown: false,
     });
-    // a clinician may ask about a card they see, never about one they don't (404, as on every card path)
-    expect(await canSee('psych', cards.theirs, as.therapist.userId)).toBe(false);
+    // only someone who may change the assignee asks: the card's assignee may, another clinician who sees it may
+    // not (403: else they would learn who else treats the patient); a card they can't see is 404 as everywhere
+    await ok(await as.director.ctx.put(`/api/v1/kanban/tasks/${cards.seen}`, { data: { assigned_to_user: as.therapist.userId } }));
+    expect(await canSee('therapist', cards.seen, as.psych.userId)).toBe(true);
+    expect(await canSee('therapist', cards.seen, as.intern.userId)).toBe(false);
+    const notAssignee = await as.psych.ctx.get(`/api/v1/kanban/tasks/${cards.seen}/can-see/${as.therapist.userId}`);
+    expect(notAssignee.status(), await notAssignee.text()).toBe(403);
+    expect((await notAssignee.json()).message).toBe('Only managers, the creator or the assignee can change this task');
     expect((await as.therapist.ctx.get(`/api/v1/kanban/tasks/${cards.theirs}/can-see/${as.psych.userId}`)).status()).toBe(404);
     expect((await as.director.ctx.get(`/api/v1/kanban/tasks/${cards.theirs}/can-see/not-a-uuid`)).status()).toBe(422);
     expect((await as.support.ctx.get(`/api/v1/kanban/tasks/${cards.theirs}/can-see/${as.psych.userId}`)).status()).toBe(403);
