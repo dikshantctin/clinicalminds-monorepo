@@ -1,7 +1,7 @@
 import { request as pwRequest, type APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, DEMO_PATIENT } from '../src/env';
-import { E2E_CLINIC, deleteClinic } from '../src/clinics';
+import { E2E_CLINIC, deleteClinic, makeDirector } from '../src/clinics';
 
 /**
  * GET /api/v1/clinicians: the clinic's bookable clinicians (PSYCHOLOGIST, THERAPIST, CLINICAL_DIRECTOR; active,
@@ -34,16 +34,17 @@ test.describe('GET /api/v1/clinicians', () => {
         },
         plan: { plan_type: 'basic', max_users: 10, max_patients: 100, max_sessions_per_month: 500 },
         admin: { email: email('admin'), password: PASSWORD, first_name: 'admin', last_name: 'List', phone: PHONE },
-        admin_role: 'CLINICAL_DIRECTOR', // the owner is the clinic's director (onboarding offers no director member)
+        admin_role: 'ADMIN', // the registrant is always ADMIN (not bookable); a team member is made director below
         team_members: [
-          member('therapist', 'THERAPIST'), member('psych', 'PSYCHOLOGIST'), member('intern', 'INTERN'),
+          member('director', 'PSYCHOLOGIST'), member('therapist', 'THERAPIST'), member('psych', 'PSYCHOLOGIST'), member('intern', 'INTERN'),
           member('desk', 'SUPPORT_STAFF'), member('admin2', 'ADMIN'),
         ],
         timezone: 'Asia/Kolkata',
       },
     });
     expect(onboarded.status(), await onboarded.text()).toBe(200);
-    for (const who of ['admin', 'therapist', 'psych', 'intern', 'desk', 'admin2']) {
+    await makeDirector(email('admin'), email('director'));
+    for (const who of ['admin', 'director', 'therapist', 'psych', 'intern', 'desk', 'admin2']) {
       const login = await anon.post('/api/v1/auth/login', { data: { email: email(who), password: PASSWORD } });
       expect(login.status(), await login.text()).toBe(200);
       const body = await login.json();
@@ -63,7 +64,7 @@ test.describe('GET /api/v1/clinicians', () => {
 
   test('every staff role, the front desk included, gets exactly the bookable clinicians', async () => {
     const expected = [
-      { id: ids.admin, first_name: 'admin', last_name: 'List', role: 'CLINICAL_DIRECTOR' },
+      { id: ids.director, first_name: 'director', last_name: 'List', role: 'CLINICAL_DIRECTOR' },
       { id: ids.psych, first_name: 'psych', last_name: 'List', role: 'PSYCHOLOGIST' },
       { id: ids.therapist, first_name: 'therapist', last_name: 'List', role: 'THERAPIST' },
     ];
