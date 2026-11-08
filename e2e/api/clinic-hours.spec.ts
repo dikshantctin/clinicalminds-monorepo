@@ -102,7 +102,9 @@ test.describe('clinic hours', () => {
 
     const hours = await (await clinic.api.get('/api/v1/clinic-hours')).json();
     expect((await clinic.api.put('/api/v1/clinic-hours', { data: { ...hours, buffer_minutes: 0 } })).status()).toBe(200);
-    expect(await slots(thursday)).toEqual(['10:00', '10:30', '11:00', '11:30', '12:00', '14:00', '14:30', '15:00']);
+    // a session keeps the buffer it was booked with (capacity slice d): 09:00–10:00 still holds until 10:15,
+    // but a new slot no longer needs a buffer of its own, so 15:00–15:50 fits before 16:00
+    expect(await slots(thursday)).toEqual(['10:30', '11:00', '11:30', '12:00', '14:00', '14:30', '15:00']);
   });
 
   test('invalid hours → 422 with the rule that failed, and nothing changes', async () => {
