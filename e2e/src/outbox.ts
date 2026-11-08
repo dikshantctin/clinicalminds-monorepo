@@ -26,3 +26,11 @@ export function inviteTokenFor(to: string): string {
   if (!match) throw new Error(`the newest email to ${to} has no set-password link`);
   return match[1];
 }
+
+/** How many emails the backend has written to its dev outbox for `to`. */
+export function emailsTo(to: string): number {
+  const dir = resolve(__dirname, '..', EMAIL_OUTBOX);
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .filter((f) => (JSON.parse(readFileSync(resolve(dir, f), 'utf8')) as OutboxEmail).to === to).length;
+}

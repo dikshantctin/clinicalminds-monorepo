@@ -1,7 +1,7 @@
 import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 import { deleteClinic, loginAs, onboardClinic } from '../src/clinics';
-import { lastEmailTo } from '../src/outbox';
+import { emailsTo, lastEmailTo } from '../src/outbox';
 import { LoginPage } from '../src/pages/login.page';
 
 /**
@@ -52,6 +52,13 @@ test.describe('staff invite (browser)', () => {
       const id: string = listed.find((u: { email: string }) => u.email === invitee).id;
       await expect(page.getByTestId(`staff-status-${id}`)).toHaveText('Invited');
       await expect(page.getByTestId(`staff-role-${id}`)).toHaveValue('THERAPIST');
+
+      // an invited row offers a resend (a new link by email); an active one does not
+      const sent = emailsTo(invitee);
+      await page.getByTestId(`resend-staff-${id}`).click();
+      await expect(page.getByText(`Invitation sent again to ${invitee}`)).toBeVisible();
+      expect(emailsTo(invitee)).toBe(sent + 1);
+      await expect(page.getByTestId(`resend-staff-${admin.user.id}`)).toHaveCount(0);
 
       await page.getByTestId(`staff-role-${id}`).selectOption('PSYCHOLOGIST');
       await page.getByTestId('staff-role-dialog-confirm').click();
