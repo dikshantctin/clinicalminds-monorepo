@@ -134,7 +134,13 @@ jobs:
           fi
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
-      - name: Start backend (startup create_all builds the platform + tenant schema)
+      # The tenant schema comes from migrations alone, as a fresh production database would, so a model change
+      # with no revision fails here (a create_all schema once hid that tasktype lacked PATIENT_FOLLOWUP).
+      - name: Alembic upgrade head (builds the tenant schema from an empty database)
+        working-directory: backend
+        run: alembic upgrade head && alembic current
+
+      - name: Start backend (startup create_all builds the platform schema; the tenant schema already exists)
         working-directory: backend
         run: |
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
@@ -147,10 +153,6 @@ jobs:
           nohup celery -A app.worker.celery_app worker -B --concurrency=1 --loglevel=info > /tmp/worker.log 2>&1 &
           for i in $(seq 1 30); do grep -q "ready" /tmp/worker.log && exit 0; sleep 1; done
           cat /tmp/worker.log; exit 1
-
-      - name: Alembic (schema came from create_all, so stamp rather than replay migrations)
-        working-directory: backend
-        run: alembic stamp head && alembic current
 
       - name: Seed demo clinic + demo rows
         working-directory: backend
