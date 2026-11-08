@@ -2,6 +2,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { test, expect, requireWeb, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 import { bookSession } from '../src/sessions';
+import { searchFor, FOLLOWUPS_LIST } from '../src/search';
 
 /**
  * The Follow-ups page replaces the auto "Follow-up queue" kanban board: a paged table, one tab per reason.
@@ -48,7 +49,7 @@ test.describe('follow-ups page', () => {
     await expect(page.getByRole('heading', { name: 'Follow-ups' })).toBeVisible();
 
     await page.getByTestId('followup-tab-missed_session').click();
-    await page.getByRole('searchbox').fill(patient.first_name);
+    await searchFor(page, page.getByRole('searchbox'), patient.first_name, FOLLOWUPS_LIST);
     const row = rowFor(page, patient.first_name);
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('Missed session');
@@ -65,7 +66,7 @@ test.describe('follow-ups page', () => {
     const cleared = await api.put(`/api/v1/kanban/tasks/${card.id}`, { data: { assigned_to_user: null } });
     expect(cleared.status(), await cleared.text()).toBe(200);
     await page.goto('/dashboard/follow-ups');
-    await page.getByRole('searchbox').fill(patient.first_name);
+    await searchFor(page, page.getByRole('searchbox'), patient.first_name, FOLLOWUPS_LIST);
     const row = rowFor(page, patient.first_name);
     await expect(row).toHaveCount(1);
 
@@ -82,7 +83,7 @@ test.describe('follow-ups page', () => {
     const card = (await (await api.get('/api/v1/kanban/followups', { params: { related_session_id: session.id } })).json()).items[0];
     const put = (data: Record<string, unknown>) => api.put(`/api/v1/kanban/tasks/${card.id}`, { data });
     await page.goto('/dashboard/follow-ups');
-    await page.getByRole('searchbox').fill(patient.first_name);
+    await searchFor(page, page.getByRole('searchbox'), patient.first_name, FOLLOWUPS_LIST);
     // the sync makes a missed-session card due tomorrow: not overdue yet
     await expect(rowFor(page, patient.first_name)).toHaveCount(1);
     await expect(rowFor(page, patient.first_name).getByTestId('task-overdue')).toHaveCount(0);

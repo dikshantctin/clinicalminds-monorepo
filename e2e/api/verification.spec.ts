@@ -27,10 +27,23 @@ test.describe('/api/v1/verification (phone.email)', () => {
     expect((await anon.post('/api/v1/verification/phone-email', { data: { user_json_url: 'x', kind: 'fax', email: 'a@b.co' } })).status()).toBe(422);
   });
 
-  test('status is public and false for an unknown email', async ({ anon }) => {
+  test('the public status lookup by email is gone (it told anyone whether an email had a record)', async ({ anon }) => {
+    // not public and not a route any more: 401 like any other unknown path
     const res = await anon.get('/api/v1/verification/status', { params: { email: `${uniq('nobody')}@example.com` } });
-    expect(res.status()).toBe(200);
-    expect(await res.json()).toEqual({ exists: false, email_verified: false, phone_verified: false });
+    expect(res.status()).toBe(401);
+  });
+
+  test('an unknown sign-up attempt token is refused, before any vendor call', async ({ anon }) => {
+    const expired = 'This verification has expired. Please verify again.';
+    const resume = await anon.post('/api/v1/verification/signup-attempt', { data: { attempt_token: 'not-a-real-token' } });
+    expect(resume.status()).toBe(400);
+    expect((await resume.json()).message).toBe(expired);
+    const proof = await anon.post('/api/v1/verification/phone-email', {
+      data: { user_json_url: 'https://user.phone.email/user_a1.json', kind: 'email', attempt_token: 'not-a-real-token' },
+    });
+    expect(proof.status()).toBe(400);
+    expect((await proof.json()).message).toBe(expired);
+    expect((await anon.post('/api/v1/verification/signup-attempt', { data: {} })).status()).toBe(422);
   });
 
   test('the logged-in endpoint requires a token', async ({ anon }) => {

@@ -1,6 +1,7 @@
 import { test, expect, requireWeb, requireApi, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 import { adminApi, demoClinicianIds } from '../src/catalog';
+import { searchFor, SERVICES_LIST } from '../src/search';
 
 /**
  * The admin chooses who offers a service in the service form. A service with nobody is not on the
@@ -43,7 +44,7 @@ test.describe('service form: who offers this service', () => {
     const info = await (await anon.get(`/api/v1/public/booking/${auth.firmCode}`)).json();
     expect(info.services.map((s: { id: string }) => s.id)).toContain(serviceId);
 
-    await page.getByTestId('service-search').fill(name);
+    await searchFor(page, page.getByTestId('service-search'), name, SERVICES_LIST);
     const row = page.getByTestId('services-table').getByRole('row', { name: new RegExp(name) });
     await expect(row.getByTestId('service-clinician-count')).toHaveText('1');
     await row.getByTestId('service-edit').click();

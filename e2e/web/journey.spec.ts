@@ -4,6 +4,7 @@ import { LoginPage } from '../src/pages/login.page';
 import { AddPatientPage } from '../src/pages/patients.page';
 import { adminApi, assignDemoClinicians } from '../src/catalog';
 import { openDay } from '../src/days';
+import { searchFor, FOLLOWUPS_LIST, SESSIONS_LIST } from '../src/search';
 
 /**
  * One clinic, one day, through the browser only (the single API shortcut is time-travelling a
@@ -120,7 +121,7 @@ test.describe('end-to-end clinic journey', () => {
   test('3. the therapist sees the online booking and starts it', async ({ page }) => {
     await loginAs(page, THERAPIST.email, THERAPIST.password);
     await page.goto('/dashboard/sessions');
-    await page.getByRole('searchbox', { name: 'Search sessions' }).fill(run);
+    await searchFor(page, page.getByRole('searchbox', { name: 'Search sessions' }), run, SESSIONS_LIST);
     const row = page.getByRole('row', { name: new RegExp(patientFullName) }).filter({ has: page.getByTestId('booked-online') });
     await expect(row).toBeVisible();
     await row.getByTitle('Start Session').click();
@@ -143,7 +144,7 @@ test.describe('end-to-end clinic journey', () => {
     // The worker syncs a few seconds after the change; the button syncs now and reloads the list
     await page.getByTestId('followup-refresh').click();
     await expect(page.getByTestId('followup-summary')).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('searchbox').fill(patientFullName);
+    await searchFor(page, page.getByRole('searchbox'), patientFullName, FOLLOWUPS_LIST);
     const row = page.getByTestId('followup-row').filter({ hasText: patientFullName });
     await expect(row).toHaveCount(1, { timeout: 15_000 });
     await expect(row).toContainText('Missed session');

@@ -100,7 +100,8 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        booking a named clinician's taken time: 403 with a reason, 409 without, the clinician's day unchanged),
                        kanban, kanban-comments (author_name / user_name, history newest first and capped at 50, plain status values, no description text; 401 / 403 PATIENT / 422), teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
-                       verification (phone.email endpoints + the 403 verification_required gate),
+                       verification (phone.email endpoints, sign-up attempt tokens: an unknown token → 400 before any
+                       vendor call, GET /verification/status retired; the 403 verification_required gate),
                        verification-bypass (onboarding checks each channel on its own: a test phone never clears an
                        unproven email, nor a test email an unproven phone; a clinic's staff email is refused as registered,
                        a patient's as in use, but only once the email is proven: before that both get the generic
