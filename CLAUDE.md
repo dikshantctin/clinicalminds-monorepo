@@ -130,7 +130,8 @@ src/
   one on demand ("Refresh follow-ups"). Page views do not write the queue.
 - **Onboarding + verification**: public business registration (`/onboarding/*`); admin email and phone are
   verified through the phone.email widget (`/verification/*`, hard gate: 403 `verification_required` for
-  unverified users; demo/test identities are allow-listed in `VERIFICATION_TEST_*`). The SMTP OTP (`/otp/*`) is unused.
+  unverified users; in dev/CI only, `VERIFICATION_TEST_EMAILS` / `_PHONES` list identities that count as proven, each
+  for its own channel: empty by default, refused in production). The SMTP OTP (`/otp/*`) is unused.
 - **Compliance**: DPDP Act 2023, audit logging, crisis escalation, tenant isolation, de-identification before external AI calls.
 
 ## Patterns
