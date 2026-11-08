@@ -66,7 +66,13 @@ test.describe('admin Services page', () => {
 
     // the status filter: Active hides it
     await page.getByRole('button', { name: 'Filters' }).click();
+    const activeOnly = page.waitForResponse((r) => {
+      const url = new URL(r.url());
+      return url.pathname === '/api/v1/catalog/services' && r.ok() && url.searchParams.get('search') === name
+        && url.searchParams.get('is_active') === 'true';
+    });
     await page.getByTestId('service-status-filter').selectOption('true');
+    await activeOnly; // else the count below passes on the loading skeleton (the table hides rows while loading)
     await expect(row).toHaveCount(0);
     await page.getByTestId('service-status-filter').selectOption('false');
     await expect(row).toHaveCount(1);
@@ -77,6 +83,9 @@ test.describe('admin Services page', () => {
     await expect(row).toHaveCount(1);
     await row.getByTestId('service-delete').click();
     await page.getByTestId('service-delete-dialog').getByRole('button', { name: 'Delete' }).click();
+    // the dialog closes only once the DELETE answered; while it is open the page behind it is hidden from
+    // getByRole, so the row "disappears" before the service is gone (batch 8 run 42436522711: total was still 1)
+    await expect(page.getByTestId('service-delete-dialog')).toBeHidden();
     await expect(row).toHaveCount(0);
     expect((await (await api.get('/api/v1/catalog/services', { params: { search: name } })).json()).total).toBe(0);
   });
@@ -85,16 +94,26 @@ test.describe('admin Services page', () => {
     const prefix = uniq('Catalog paging');
     // the page size is 20 (APP_CONFIG.PAGE_SIZE): 21 rows make a second page
     for (let i = 1; i <= 21; i += 1) await createService(api, created, { name: `${prefix} ${String(i).padStart(2, '0')}` });
+    // The search box is debounced (SEARCH_DEBOUNCE_MS): wait for the FILTERED pages, or the unfiltered list (which can
+    // also total 21) satisfies the summary, Next pages the unfiltered list, and the late search resets to page 1.
+    const filtered = (skip: number) =>
+      page.waitForResponse((r) => {
+        const url = new URL(r.url());
+        return url.pathname === '/api/v1/catalog/services' && r.request().method() === 'GET' && r.ok()
+          && url.searchParams.get('search') === prefix && url.searchParams.get('skip') === String(skip);
+      });
+    const table = page.getByTestId('services-table');
     await page.goto('/admin/services');
-    // wait for the searched page itself: when the clinic holds only these 21 services, the unfiltered first
-    // page also reads "Showing 1–20 of 21", and Next would then page the unfiltered list
-    const searched = page.waitForResponse((r) => r.url().includes('/api/v1/catalog/services?') && new URL(r.url()).searchParams.get('search') === prefix);
+    const firstPage = filtered(0);
     await page.getByTestId('service-search').fill(prefix);
-    await searched;
+    await firstPage;
     await expect(page.getByText('Showing 1–20 of 21')).toBeVisible();
+    const secondPage = filtered(20);
     await page.getByRole('button', { name: /next/i }).click();
+    await secondPage;
     await expect(page.getByText('Showing 21–21 of 21')).toBeVisible();
-    await expect(page.getByTestId('services-table').getByRole('row', { name: new RegExp(`${prefix} 21`) })).toBeVisible();
+    await expect(table.getByRole('row', { name: new RegExp(`${prefix} 21`) })).toBeVisible();
+    await expect(table.getByRole('row', { name: new RegExp(`${prefix} 01`) })).toHaveCount(0);
   });
 });
 
@@ -141,6 +160,7 @@ test.describe('admin Locations page', () => {
 
       await row.getByTestId('location-delete').click();
       await page.getByTestId('location-delete-dialog').getByRole('button', { name: 'Delete' }).click();
+      await expect(page.getByTestId('location-delete-dialog')).toBeHidden(); // closes only once the DELETE answered
       await expect(row).toHaveCount(0);
     } finally {
       await api.delete(`/api/v1/catalog/locations/${id}`); // no-op (404) when the UI delete worked
