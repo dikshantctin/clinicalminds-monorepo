@@ -66,7 +66,13 @@ test.describe('admin Services page', () => {
 
     // the status filter: Active hides it
     await page.getByRole('button', { name: 'Filters' }).click();
+    const activeOnly = page.waitForResponse((r) => {
+      const url = new URL(r.url());
+      return url.pathname === '/api/v1/catalog/services' && r.ok() && url.searchParams.get('search') === name
+        && url.searchParams.get('is_active') === 'true';
+    });
     await page.getByTestId('service-status-filter').selectOption('true');
+    await activeOnly; // else the count below passes on the loading skeleton (the table hides rows while loading)
     await expect(row).toHaveCount(0);
     await page.getByTestId('service-status-filter').selectOption('false');
     await expect(row).toHaveCount(1);
@@ -77,6 +83,9 @@ test.describe('admin Services page', () => {
     await expect(row).toHaveCount(1);
     await row.getByTestId('service-delete').click();
     await page.getByTestId('service-delete-dialog').getByRole('button', { name: 'Delete' }).click();
+    // the dialog closes only once the DELETE answered; while it is open the page behind it is hidden from
+    // getByRole, so the row "disappears" before the service is gone (batch 8 run 42436522711: total was still 1)
+    await expect(page.getByTestId('service-delete-dialog')).toBeHidden();
     await expect(row).toHaveCount(0);
     expect((await (await api.get('/api/v1/catalog/services', { params: { search: name } })).json()).total).toBe(0);
   });
@@ -151,6 +160,7 @@ test.describe('admin Locations page', () => {
 
       await row.getByTestId('location-delete').click();
       await page.getByTestId('location-delete-dialog').getByRole('button', { name: 'Delete' }).click();
+      await expect(page.getByTestId('location-delete-dialog')).toBeHidden(); // closes only once the DELETE answered
       await expect(row).toHaveCount(0);
     } finally {
       await api.delete(`/api/v1/catalog/locations/${id}`); // no-op (404) when the UI delete worked
