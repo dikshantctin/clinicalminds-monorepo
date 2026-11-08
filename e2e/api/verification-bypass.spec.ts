@@ -143,6 +143,29 @@ test.describe('onboarding: no account details for an unproven email', () => {
   });
 });
 
+test.describe('onboarding uses up the verification record', () => {
+  requireApi();
+  requireAuth();
+
+  test("after a clinic is created, the admin email's verification record is gone (it cannot be replayed)", async ({ anon, api }) => {
+    const slug = uniq('vbr').toLowerCase();
+    const admin = `admin.${slug}@example.com`;
+    // a pending record for that email (the OTP flow writes one without the vendor)
+    const pending = await api.post('/api/v1/otp/generate', { data: { email: admin, type: 'email' } });
+    expect(pending.status(), await pending.text()).toBe(200);
+    const status = async () => (await anon.get('/api/v1/verification/status', { params: { email: admin } })).json();
+    expect((await status()).exists).toBe(true);
+
+    const created = await anon.post('/api/v1/onboarding/complete', { data: payload(slug, { email: admin, phone: ALLOW_LISTED_PHONE }) });
+    expect(created.status(), await created.text()).toBe(200);
+    try {
+      expect(await status()).toEqual({ exists: false, email_verified: false, phone_verified: false });
+    } finally {
+      await deleteClinic(admin);
+    }
+  });
+});
+
 test.describe('demo identities', () => {
   requireApi();
   requireAuth();
