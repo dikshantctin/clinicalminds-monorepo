@@ -224,6 +224,15 @@ Any feature or bugfix that changes user-visible behavior or an API contract ship
   `git branch --show-current` right before committing, and push with an explicit refspec
   (`git push origin HEAD:<branch>`). A session switching the shared checkout's branch once sent a commit to the wrong branch.
 
+## Releases (tags)
+
+`main` is the integration line, and **only tags are released or deployed**. Full process and history: `RELEASING.md`.
+- Versions are `vMAJOR.MINOR.PATCH`: MINOR for a set of changes, PATCH for fixes only, `1.0.0` for the first launch with live clinics. `v0.5.0` = development complete (2026-11-08).
+- A release tags the **same version in all four repos** with annotated tags, after: everything merged, e2e green on that monorepo commit, the user's hand test, and a clean audit.
+- **Only with the user's explicit OK.** Sessions propose a release; they never tag on their own.
+- **Never move, delete or re-push a tag**; a bad release is fixed on `main` and released as the next PATCH.
+- **Never deploy `main` or an untagged commit.** Never commit while a tag is checked out (detached HEAD).
+
 ## CI/CD
 
 There is CI only, no deployment pipeline. Four GitHub Actions workflows:
