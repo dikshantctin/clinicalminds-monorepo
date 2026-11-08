@@ -3,6 +3,7 @@ import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq } from '../src/env';
 import { assignDemoClinicians, demoClinicianIds } from '../src/catalog';
 import { openDay } from '../src/days';
+import { makeDirector } from '../src/clinics';
 
 /**
  * Every clinic-local day is the clinic's own zone (platform_firms.timezone), not Asia/Kolkata:
@@ -30,7 +31,8 @@ const offsetOn = (ymd: string, tz: string) => {
 
 interface Clinic { api: APIRequestContext; firmCode: string; practitionerId: string; serviceId: string }
 
-/** A fresh clinic in America/New_York whose CLINICAL_DIRECTOR admin is also its bookable clinician. */
+/** A fresh clinic in America/New_York whose CLINICAL_DIRECTOR is its bookable clinician (the registrant is its ADMIN,
+ * who is never bookable, and makes the director). */
 async function onboardNewYorkClinic(): Promise<Clinic> {
   const slug = uniq('tz').toLowerCase();
   const anon = await pwRequest.newContext({ baseURL: env.API_URL });
@@ -43,13 +45,17 @@ async function onboardNewYorkClinic(): Promise<Clinic> {
         },
         plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
         admin: { email: `admin.${slug}@example.com`, password: 'Password123!', first_name: 'Nora', last_name: 'York', phone: ALLOW_LISTED_PHONE },
-        admin_role: 'CLINICAL_DIRECTOR',
-        team_members: [],
+        admin_role: 'ADMIN',
+        team_members: [{
+          email: `director.${slug}@example.com`, first_name: 'Dina', last_name: 'York', role: 'PSYCHOLOGIST', phone: ALLOW_LISTED_PHONE,
+          license_number: 'E2E-LIC-1', temporary_password: 'Password123!', send_invitation: false,
+        }],
         timezone: NY,
       },
     });
     expect(onboarded.status(), await onboarded.text()).toBe(200);
-    const login = await anon.post('/api/v1/auth/login', { data: { email: `admin.${slug}@example.com`, password: 'Password123!' } });
+    await makeDirector(`admin.${slug}@example.com`, `director.${slug}@example.com`);
+    const login = await anon.post('/api/v1/auth/login', { data: { email: `director.${slug}@example.com`, password: 'Password123!' } });
     expect(login.status(), await login.text()).toBe(200);
     const { access_token, user, tenant } = await login.json();
     const api = await pwRequest.newContext({

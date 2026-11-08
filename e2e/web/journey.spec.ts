@@ -4,6 +4,7 @@ import { LoginPage } from '../src/pages/login.page';
 import { AddPatientPage } from '../src/pages/patients.page';
 import { adminApi, assignDemoClinicians } from '../src/catalog';
 import { openDay } from '../src/days';
+import { uniqueDay } from '../src/sessions';
 import { searchFor, FOLLOWUPS_LIST, SESSIONS_LIST } from '../src/search';
 
 /**
@@ -27,13 +28,6 @@ const run = uniq('Journey'); // patient first name + service prefix for this run
 const patientFullName = `${run} Patient`;
 const serviceName = `${run} Consult`;
 
-const localDateTime = (daysAhead: number, hour: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + daysAhead);
-  d.setHours(hour, 0, 0, 0);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
 const isoDate = (daysAhead: number) => openDay(daysAhead); // public booking day: clinics are closed on Sunday
 
 async function loginAs(page: import('@playwright/test').Page, email: string, password: string) {
@@ -90,7 +84,8 @@ test.describe('end-to-end clinic journey', () => {
     // session scheduled by the clinic
     await page.goto('/dashboard/sessions/new');
     await page.locator('#patientId').selectOption({ label: `${patientFullName} - No diagnosis` });
-    await page.locator('#scheduledAt').fill(localDateTime(1, 11));
+    // clinic time on a far, unique day: "tomorrow 11:00" clashed with a parallel or repeated run (README: book a fixed slot)
+    await page.locator('#scheduledAt').fill(`${uniqueDay()}T11:00`);
     await page.getByRole('button', { name: 'Schedule Session' }).click();
     await expect(page.getByText('Session scheduled successfully!')).toBeVisible();
     await expect(page).toHaveURL(/\/dashboard\/sessions$/);

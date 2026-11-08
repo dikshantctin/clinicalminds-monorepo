@@ -88,7 +88,7 @@ test.describe('dev/test-only clinic delete', () => {
         },
         plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
         admin: { email: owner, password: PASSWORD, first_name: 'Owner', last_name: 'Director', phone: ALLOW_LISTED_PHONE },
-        admin_role: 'CLINICAL_DIRECTOR',
+        admin_role: 'ADMIN', // the registrant is always ADMIN; below, the invited ADMIN makes them CLINICAL_DIRECTOR
         team_members: [{
           email: invited, first_name: 'Invited', last_name: 'Admin', role: 'ADMIN', phone: ALLOW_LISTED_PHONE,
           temporary_password: PASSWORD, send_invitation: false,
@@ -96,10 +96,16 @@ test.describe('dev/test-only clinic delete', () => {
       },
     });
     expect(onboard.status(), await onboard.text()).toBe(200);
-    const director = await login(anon, owner);
-    expect(director.user.role).toBe('CLINICAL_DIRECTOR');
     const admin = await login(anon, invited);
     expect(admin.user.role).toBe('ADMIN');
+    const registrantId = (await login(anon, owner)).user.id;
+    const reRoled = await anon.put(`/api/v1/tenants/${admin.tenant.id}/users/${registrantId}/role`, {
+      headers: { Authorization: `Bearer ${admin.access_token}`, 'X-Tenant-ID': admin.tenant.id },
+      data: { role: 'CLINICAL_DIRECTOR' },
+    });
+    expect(reRoled.status(), await reRoled.text()).toBe(200);
+    const director = await login(anon, owner);
+    expect(director.user.role).toBe('CLINICAL_DIRECTOR');
     expect(admin.tenant.id).toBe(director.tenant.id);
     const url = `/api/v1/dev/tenants/${director.tenant.id}`;
 

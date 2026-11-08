@@ -20,6 +20,10 @@ async function optionsPassedToCheckout(page: Page, api: import('@playwright/test
     route.fulfill({ contentType: 'application/javascript', body: CHECKOUT_STUB }),
   );
   let sessionId = '';
+  // someone already on the phone, so the page offers "Someone else" (in a CI shard no earlier spec may have booked with it)
+  const sibling = await api.post('/api/v1/patients/', { data: { first_name: uniq('Sibling'), last_name: 'Patient', phone: TEST_PHONE } });
+  expect(sibling.status(), await sibling.text()).toBe(200);
+  const siblingId = (await sibling.json()).id;
   // The free booking is real; its answer gains a payment as a priced one would, with the key under test
   await page.route(`**/api/v1/public/booking/${firmCode}`, async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
@@ -40,7 +44,7 @@ async function optionsPassedToCheckout(page: Page, api: import('@playwright/test
     await slotButtons.nth(slotIndex).click();
     await page.getByTestId('booking-phone').fill(TEST_PHONE);
     await page.getByTestId('booking-phone').blur();
-    await page.getByTestId('booking-for-new').click(); // the shared test phone already has patients
+    await page.getByTestId('booking-for-new').click();
     await page.getByTestId('booking-first-name').fill(uniq('Upi'));
     await page.getByTestId('booking-last-name').fill('Flows');
     await page.getByTestId('booking-submit').click();
@@ -50,6 +54,7 @@ async function optionsPassedToCheckout(page: Page, api: import('@playwright/test
     return await page.evaluate(() => (window as unknown as { __rzpOptions: { key: string; config?: unknown } }).__rzpOptions);
   } finally {
     if (sessionId) await api.post(`/api/v1/sessions/${sessionId}/cancel`, { data: { reason: 'e2e cleanup' } });
+    await api.delete(`/api/v1/patients/${siblingId}`);
   }
 }
 

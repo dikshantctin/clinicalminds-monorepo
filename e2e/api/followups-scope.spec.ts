@@ -1,7 +1,7 @@
 import { request as pwRequest, type APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq } from '../src/env';
-import { E2E_CLINIC, deleteClinic } from '../src/clinics';
+import { E2E_CLINIC, deleteClinic, makeDirector } from '../src/clinics';
 
 /**
  * Who sees a follow-up card. CLINICAL_DIRECTOR (and ADMIN) see the clinic's whole queue; PSYCHOLOGIST,
@@ -57,9 +57,11 @@ test.describe('follow-up cards are scoped to the clinician', () => {
           address_line1: '1 MG Road', city: 'Pune', state: 'MH', postal_code: '411001',
         },
         plan: { plan_type: 'basic', max_users: 10, max_patients: 100, max_sessions_per_month: 500 },
-        admin: { email: email('director'), password: PASSWORD, first_name: 'Director', last_name: 'Scope', phone: PHONE },
-        admin_role: 'CLINICAL_DIRECTOR',
+        // the registrant is the clinic's ADMIN; the director joins as a team member and is made director below
+        admin: { email: `registrant.${slug}@example.com`, password: PASSWORD, first_name: 'Registrant', last_name: 'Scope', phone: PHONE },
+        admin_role: 'ADMIN',
         team_members: [
+          member('director', 'PSYCHOLOGIST'),
           member('therapist', 'THERAPIST'), member('psych', 'PSYCHOLOGIST'),
           member('intern', 'INTERN'), member('support', 'SUPPORT_STAFF'),
         ],
@@ -67,6 +69,7 @@ test.describe('follow-up cards are scoped to the clinician', () => {
       },
     });
     expect(onboarded.status(), await onboarded.text()).toBe(200);
+    await makeDirector(`registrant.${slug}@example.com`, email('director'));
     for (const who of ['director', 'therapist', 'psych', 'intern', 'support'] as Who[]) {
       const body = await ok<{ access_token: string; user: { id: string }; tenant: { id: string } }>(
         await anon.post('/api/v1/auth/login', { data: { email: email(who), password: PASSWORD } }),
