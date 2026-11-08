@@ -113,12 +113,12 @@ test.describe('onboarding wizard validation', () => {
     await next(page).click();
     await expect(stepHeading(page)).toHaveText('Team Members');
 
-    // step 5: a team member with a bad email is not added
+    // step 5: a team member with a bad email is not added; a therapist needs no license (it is optional for every role)
     await page.getByRole('button', { name: 'Add Team Member' }).click();
     await page.getByLabel('First Name').fill('Team');
     await page.getByLabel('Last Name').fill('Member');
     await page.getByTestId('member-email').fill('bad-email');
-    await page.getByLabel('License Number').fill('LIC-1');
+    await expect(page.getByLabel('License Number (optional)')).toHaveValue('');
     await page.getByTestId('member-add').click();
     await expect(page.getByText('Enter a valid email address')).toBeVisible();
     await expect(page.getByText(/Team Members \(\d\)/)).toHaveCount(0);
@@ -139,6 +139,8 @@ test.describe('onboarding wizard validation', () => {
     expect(body.plan.features).not.toHaveProperty('ai_enabled');
     expect(body.plan.features).not.toHaveProperty('crisis_detection');
     expect(body.team_members[0]).not.toHaveProperty('phone'); // empty optional fields are left out
+    expect(body.team_members[0]).toMatchObject({ role: 'THERAPIST' });
+    expect(body.team_members[0]).not.toHaveProperty('license_number');
     const done = await complete; // the wizard really creates the clinic: delete it in afterAll
     expect(done.status(), await done.text()).toBe(200);
     expect(done.request().postDataJSON().attempt_token).toBe(token);
