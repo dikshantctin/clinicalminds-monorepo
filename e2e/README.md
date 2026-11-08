@@ -51,6 +51,12 @@ npm run type-check            # tsc over the suite
 npx playwright test api/patients.spec.ts -g "create"   # one spec / one test
 ```
 
+In CI (`.github/workflows/e2e.yml`) the suite runs in **3 shards** (`--shard=n/3`), each on its own runner with
+its own full stack and demo seed, so shards share no state. Each shard uploads a blob report; the
+`merge-reports` job joins them into the one `playwright-report` artifact, and the `playwright` job is the single
+pass/fail check (green only when every shard and the merge passed). Logs of a red shard are in its
+"playwright shard n/3" job; reproduce one locally with `npx playwright test --shard=2/3`.
+
 ## How auth works
 
 `global-setup.ts` logs in through `POST /api/v1/auth/login` with `E2E_EMAIL`/`E2E_PASSWORD` and:
