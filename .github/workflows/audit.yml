@@ -57,5 +57,5 @@ jobs:
         run: |
           rc=0
           npm audit --audit-level=high > report.txt || rc=$?
-          { echo '## ${{ matrix.dir }}'; echo '```'; cat report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '## ${{ matrix.dir }}'; echo '```'; cat report.txt; echo '```'; echo 'Moderate/low findings accepted on purpose are listed in SECURITY.md.'; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
