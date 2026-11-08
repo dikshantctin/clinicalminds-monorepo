@@ -31,6 +31,7 @@ Bring up the stack (see each component's `CLAUDE.md`):
 cd ../backend && docker compose up -d postgres && python main.py
 python scripts/setup_demo_data.py        # with the server up: onboards demo@clinicalmind.com / Password123! (ADMIN)
                                          # (POSTs /api/v1/onboarding/complete — the only path that writes both DB layers)
+python scripts/platform_staff.py grant platform.staff@example.com --by "<you>"   # the @docs specs' platform staff
 # frontend
 cd ../frontend && npm install && npm run dev
 # de-identification (optional)
@@ -114,6 +115,10 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        catalog (services/locations: 422 for blank name, duration <= 0, negative or 3-decimal price;
                        THERAPIST 403 on writes; search + skip/limit totals; deactivated → gone from public booking;
                        structured location address round-trips)
+                       platform-docs (@docs: platform staff 200 list + read; unknown / path-like slug 404; clinic ADMIN,
+                       THERAPIST, PATIENT → 404 {"detail":"Not Found"}, the same as a missing route; no token 401),
+                       docs-register (pure file reads: every App.tsx route and every spec is named in
+                       backend/app/platform_docs/register.md, and every spec it names exists)
 web/                   auth, guards, navigation, desk-no-kanban (the desk has no bell, no Tasks link, a follow-up tile that is not a link), patients, sessions, tasks-teams, task-assignee-filter (Assignee filter by any staff member, exact card counts, no-match state), kanban-comments (task dialog: comment + staff mention, history row; the mentioned therapist opens it from the bell), misc-pages, portal-onboarding, portal-login (/portal/login → /portal; each login refuses the other kind of account),
                        staff-invite (the Invite staff dialog validates and sends, role select staged behind a confirm (cancel sends nothing),
                        a director is offered no ADMIN and cannot edit or remove an ADMIN row, the same answer for another clinic's account,
@@ -153,6 +158,9 @@ web/                   auth, guards, navigation, desk-no-kanban (the desk has no
                        iPhone gets the Add to Home Screen hint, Not now hides it for 30 days, hidden when installed,
                        keyboard + named region, in the page flow at 390 px). The web project blocks service workers;
                        only these specs allow them.
+                       platform-docs (@docs: platform staff open /docs and the register renders; an ADMIN typing
+                       /docs lands on /dashboard; no /docs link for clinic users; no doc's text in any file of
+                       ../frontend/dist (FRONTEND_DIST; run `npm run build` first) and the web server serves none)
 ```
 
 Specs create their own data with unique names (`uniq()`) and clean up in `finally` blocks. Catalog services

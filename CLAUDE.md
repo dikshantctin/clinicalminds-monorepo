@@ -174,10 +174,14 @@ const mutation = useMutation(PatientAPI.updatePatient, {
 2. Identity/tenant via dependencies; add permission checks.
 3. Client method in `frontend/src/services/api.ts`.
 4. Spec in `e2e/api/`; row in the API table of `backend/CLAUDE.md`.
+5. Line in the feature register `backend/app/platform_docs/register.md` (endpoint, route, roles, specs):
+   `backend/tests/test_platform_docs_register.py` fails on an endpoint it does not name, and
+   `e2e/api/docs-register.spec.ts` on a frontend route or spec it does not name.
 
 ### Adding a Page
 1. Page in `frontend/src/pages/`, route + `RoleGuard` in `App.tsx`, sidebar entry in `config/navigation.ts`.
 2. Add `data-testid`s to interactive elements; spec in `e2e/web/`.
+3. Name the route and its specs in the feature register (`backend/app/platform_docs/register.md`).
 
 ### Adding Database Models
 1. Tenant data → tenant DB models; platform data → `models/platform.py`.

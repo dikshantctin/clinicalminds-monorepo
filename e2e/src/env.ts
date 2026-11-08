@@ -41,3 +41,13 @@ export const EMAIL_OUTBOX = process.env.E2E_EMAIL_OUTBOX ?? '../backend/.email-o
 
 /** A portal PATIENT login in the demo clinic, seeded by backend/scripts/setup_demo_data.py. */
 export const DEMO_PATIENT = { email: 'patient.demo@democlinic.com', password: 'Password123!' };
+
+/** PsyClinicalMind platform staff (opens /docs): a SUPPORT_STAFF login in the demo clinic seeded by
+ *  backend/scripts/setup_demo_data.py, granted platform staff ONLY by
+ *  `python scripts/platform_staff.py grant platform.staff@example.com --by <who>` (e2e.yml does it in CI). */
+export const PLATFORM_STAFF = { email: 'platform.staff@example.com', password: 'Password123!' };
+
+/** The built frontend (vite build output), scanned to prove the internal docs never ship in it. */
+export const FRONTEND_DIST = process.env.FRONTEND_DIST ?? '../frontend/dist';
+/** The internal docs' source folder in the backend repo. */
+export const PLATFORM_DOCS_DIR = process.env.PLATFORM_DOCS_DIR ?? '../backend/app/platform_docs';
