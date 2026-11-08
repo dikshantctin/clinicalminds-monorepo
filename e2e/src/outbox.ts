@@ -20,6 +20,18 @@ export function lastEmailTo(to: string): OutboxEmail {
   throw new Error(`no email to ${to} in ${dir}: is EMAIL_OUTBOX_DIR set in backend/.env?`);
 }
 
+/** How many emails the backend wrote to its dev outbox for `to` (0 when none). */
+export function emailsTo(to: string): number {
+  const dir = resolve(__dirname, '..', EMAIL_OUTBOX);
+  let files: string[] = [];
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  } catch {
+    return 0;
+  }
+  return files.filter((f) => (JSON.parse(readFileSync(resolve(dir, f), 'utf8')) as OutboxEmail).to === to).length;
+}
+
 /** The set-password token from the newest portal invite sent to `to`. */
 export function inviteTokenFor(to: string): string {
   const match = lastEmailTo(to).html.match(/set-password\?token=([\w.-]+)/);

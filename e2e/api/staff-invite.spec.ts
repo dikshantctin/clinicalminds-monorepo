@@ -1,7 +1,7 @@
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { uniq, RANDOM_UUID } from '../src/env';
 import { deleteClinic, inviteStaff, loginAs, onboardClinic, CLINIC_PASSWORD } from '../src/clinics';
-import { inviteTokenFor, lastEmailTo } from '../src/outbox';
+import { emailsTo, inviteTokenFor, lastEmailTo } from '../src/outbox';
 import { staffInviteToken } from '../src/invite-token';
 
 /**
@@ -217,6 +217,60 @@ test.describe('staff invite, role change, removal', () => {
     }
   });
 
+  test('re-inviting someone who never set a password sends a new link (a failed email can be retried); active → 409', async ({ anon }) => {
+    // the membership is saved before the email goes out, so a 503 leaves a pending member: inviting again resends
+    const { owner } = await onboardClinic(anon);
+    const admin = await loginAs(owner);
+    const tenantId = admin.tenant.id;
+    const invitee = email('retry');
+    try {
+      const first = await inviteStaff(admin.ctx, tenantId, { email: invitee, role: 'THERAPIST' });
+      expect(first.status(), await first.text()).toBe(200);
+      expect(emailsTo(invitee)).toBe(1);
+
+      const again = await inviteStaff(admin.ctx, tenantId, { email: invitee.toUpperCase(), role: 'PSYCHOLOGIST' });
+      expect(again.status(), await again.text()).toBe(200);
+      expect(await again.json()).toEqual({ message: 'Invitation sent', email: invitee });
+      expect(emailsTo(invitee)).toBe(2);
+      const rows = (await users(admin.ctx, tenantId)).filter((u) => u.email === invitee);
+      expect(rows.map((r) => [r.role, r.status])).toEqual([['PSYCHOLOGIST', 'pending']]);
+
+      // the new link activates the account with the new role
+      const set = await anon.post('/api/v1/auth/set-password', { data: { token: inviteTokenFor(invitee), password: NEW_PASSWORD } });
+      expect(set.status(), await set.text()).toBe(200);
+      const member = await loginAs(invitee, NEW_PASSWORD);
+      expect(member.user.role).toBe('PSYCHOLOGIST');
+      await member.ctx.dispose();
+
+      const active = await inviteStaff(admin.ctx, tenantId, { email: invitee, role: 'INTERN' });
+      expect(active.status()).toBe(409);
+      expect(await message(active)).toBe('This person is already a member of this clinic');
+      expect(emailsTo(invitee)).toBe(2);
+    } finally {
+      await admin.ctx.dispose();
+      await deleteClinic(owner);
+    }
+  });
+
+  test('a pending ADMIN is re-invited only by an ADMIN', async ({ anon }) => {
+    const pendingAdmin = email('padmin');
+    const { owner } = await onboardClinic(anon, { ownerRole: 'CLINICAL_DIRECTOR', team: [{ email: pendingAdmin, role: 'ADMIN', invite: true }] });
+    const director = await loginAs(owner);
+    const tenantId = director.tenant.id;
+    try {
+      const sent = emailsTo(pendingAdmin);
+      const demote = await inviteStaff(director.ctx, tenantId, { email: pendingAdmin, role: 'THERAPIST' });
+      expect(demote.status(), await demote.text()).toBe(403);
+      expect(await message(demote)).toBe('Only an admin can grant, change or remove the admin role');
+      expect(emailsTo(pendingAdmin)).toBe(sent);
+      const row = (await users(director.ctx, tenantId)).find((u) => u.email === pendingAdmin);
+      expect([row!.role, row!.status]).toEqual(['ADMIN', 'pending']);
+    } finally {
+      await director.ctx.dispose();
+      await deleteClinic(owner);
+    }
+  });
+
   test('set-password: an invitee removed before setting a password cannot activate; an expired link is refused', async ({ anon }) => {
     const { owner } = await onboardClinic(anon);
     const admin = await loginAs(owner);
@@ -247,6 +301,74 @@ test.describe('staff invite, role change, removal', () => {
       expect(live.status(), await live.text()).toBe(200);
     } finally {
       await admin.ctx.dispose();
+      await deleteClinic(owner);
+    }
+  });
+
+  test('resend invite: a pending invitee gets a new working link; 409 once a password is set, 404 not staff, only an ADMIN resends to an ADMIN', async ({ anon, api }) => {
+    const adminEmail = email('radmin');
+    const therapistEmail = email('rther');
+    const { owner } = await onboardClinic(anon, {
+      ownerRole: 'CLINICAL_DIRECTOR',
+      team: [{ email: adminEmail, role: 'ADMIN' }, { email: therapistEmail, role: 'THERAPIST' }],
+    });
+    const director = await loginAs(owner);
+    const tenantId = director.tenant.id;
+    const resend = (ctx: import('@playwright/test').APIRequestContext, id: string) =>
+      ctx.post(`/api/v1/tenants/${tenantId}/users/${id}/resend-invite`);
+    const pendingEmail = email('rpending');
+    const pendingAdmin = email('radmin2');
+    try {
+      expect((await inviteStaff(director.ctx, tenantId, { email: pendingEmail, role: 'THERAPIST' })).status()).toBe(200);
+      const rows = await users(director.ctx, tenantId);
+      const pending = rows.find((u) => u.email === pendingEmail)!;
+      const therapistId = rows.find((u) => u.email === therapistEmail)!.id;
+      const sent = emailsTo(pendingEmail);
+
+      const res = await resend(director.ctx, pending.id);
+      expect(res.status(), await res.text()).toBe(200);
+      expect(await res.json()).toEqual({ message: 'Invitation sent', email: pendingEmail });
+      expect(emailsTo(pendingEmail)).toBe(sent + 1);
+      expect(lastEmailTo(pendingEmail).html).toContain('/auth/set-password?token=');
+
+      // who may not: no token 401, THERAPIST 403, another clinic's ADMIN 403
+      expect((await resend(anon, pending.id)).status()).toBe(401);
+      const therapist = await loginAs(therapistEmail);
+      try {
+        expect((await resend(therapist.ctx, pending.id)).status()).toBe(403);
+      } finally {
+        await therapist.ctx.dispose();
+      }
+      expect((await resend(api, pending.id)).status()).toBe(403);
+      expect(emailsTo(pendingEmail)).toBe(sent + 1); // none of them sent anything
+
+      // not staff here 404; already has a password 409
+      const stranger = await resend(director.ctx, RANDOM_UUID);
+      expect(stranger.status()).toBe(404);
+      expect(await message(stranger)).toBe('Not a member of this clinic');
+      const active = await resend(director.ctx, therapistId);
+      expect(active.status()).toBe(409);
+      expect(await message(active)).toBe('This person has already set a password');
+
+      // the resent link works, and after it a resend is refused
+      const set = await anon.post('/api/v1/auth/set-password', { data: { token: inviteTokenFor(pendingEmail), password: NEW_PASSWORD } });
+      expect(set.status(), await set.text()).toBe(200);
+      expect((await resend(director.ctx, pending.id)).status()).toBe(409);
+
+      // a pending ADMIN: the CD may not resend, an ADMIN may
+      const adminSession = await loginAs(adminEmail);
+      try {
+        expect((await inviteStaff(adminSession.ctx, tenantId, { email: pendingAdmin, role: 'ADMIN' })).status()).toBe(200);
+        const adminId = (await users(adminSession.ctx, tenantId)).find((u) => u.email === pendingAdmin)!.id;
+        const byCd = await resend(director.ctx, adminId);
+        expect(byCd.status()).toBe(403);
+        expect(await message(byCd)).toBe('Only an admin can grant, change or remove the admin role');
+        expect((await resend(adminSession.ctx, adminId)).status()).toBe(200);
+      } finally {
+        await adminSession.ctx.dispose();
+      }
+    } finally {
+      await director.ctx.dispose();
       await deleteClinic(owner);
     }
   });

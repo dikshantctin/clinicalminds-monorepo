@@ -214,3 +214,67 @@ test.describe('public booking page (/book/<firmCode>)', () => {
     await expect(page.getByRole('heading', { name: 'Clinic not found' })).toBeVisible();
   });
 });
+
+/**
+ * Confirm booking stays disabled, with one line saying why, until the booking can really be made: the mobile number
+ * is proven (phone.email, or a test-listed number the clinic accepts at once) and, when the clinic already has
+ * people on that number, one of them (or "Someone else") is chosen.
+ */
+test.describe('public booking: why Confirm booking is disabled', () => {
+  requireWeb();
+  requireApi();
+  requireAuth();
+  test.use({ storageState: { cookies: [], origins: [] } });
+  const own: string[] = [];
+  test.afterEach(async ({ api }) => cleanupServices(api, own));
+
+  async function toDetails(page: import('@playwright/test').Page, api: import('@playwright/test').APIRequestContext, firmCode: string) {
+    // phone.email's vendor script is not loaded; a test calls its callback as the widget would
+    await page.route('https://www.phone.email/**', (route) => route.fulfill({ contentType: 'application/javascript', body: '' }));
+    const service = await createService(api, own, { name: uniq('Confirm hint'), price: 0 });
+    await assignDemoClinicians(api, service.id);
+    await page.goto(`/book/${firmCode}`);
+    await page.getByTestId(`service-${service.id}`).click();
+    await page.getByRole('radio', { name: /Jane Doe/ }).click();
+    await page.getByTestId('booking-date').fill(dayAfterTomorrow());
+    const slots = page.getByTestId('booking-slots').getByRole('radio');
+    await expect(slots.first()).toBeVisible({ timeout: 15_000 });
+    await slots.first().click();
+  }
+
+  test('an unproven number: disabled with "Verify your mobile number" until phone.email proves it', async ({ page, api, auth }) => {
+    await toDetails(page, api, auth.firmCode);
+    const submit = page.getByTestId('booking-submit');
+    const hint = page.getByTestId('booking-submit-hint');
+    await page.getByTestId('booking-phone').fill('+919812345678'); // not test-listed: the lookup needs proof
+    await page.getByTestId('booking-phone').blur();
+    await expect(submit).toBeDisabled();
+    await expect(hint).toHaveText('Verify your mobile number');
+    await expect(submit).toHaveAttribute('aria-describedby', (await hint.getAttribute('id'))!);
+
+    await page.evaluate(() => (window as unknown as { phoneEmailListener: (u: object) => void }).phoneEmailListener({ user_json_url: 'https://user.phone.email/e2e.json' }));
+    await expect(page.getByText('Number verified', { exact: true }).first()).toBeVisible(); // the badge (a toast says it too)
+    await expect(submit).toBeEnabled();
+    await expect(hint).toHaveCount(0);
+    await expect(submit).not.toHaveAttribute('aria-describedby', /.+/);
+  });
+
+  test('people already on the number: disabled with "Choose who this booking is for", the chooser is scrolled to, choosing enables', async ({ page, api, auth }) => {
+    const patient = await (await api.post('/api/v1/patients/', { data: { first_name: uniq('Hint'), last_name: 'Holder', phone: TEST_PHONE } })).json();
+    try {
+      await toDetails(page, api, auth.firmCode);
+      const submit = page.getByTestId('booking-submit');
+      await page.getByTestId('booking-phone').fill(TEST_PHONE); // test-listed: accepted at once, so the chooser appears
+      await page.getByTestId('booking-phone').blur();
+      await expect(page.getByTestId('booking-for')).toBeInViewport();
+      await expect(submit).toBeDisabled();
+      await expect(page.getByTestId('booking-submit-hint')).toHaveText('Choose who this booking is for');
+
+      await page.getByTestId('booking-for-new').click();
+      await expect(submit).toBeEnabled();
+      await expect(page.getByTestId('booking-submit-hint')).toHaveCount(0);
+    } finally {
+      await api.delete(`/api/v1/patients/${patient.id}`);
+    }
+  });
+});

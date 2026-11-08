@@ -232,4 +232,6 @@ Also note that restarting the backend mid-run turns every request into a 401 and
 - Web: new file under `web/`; `requireWeb(); requireAuth();` for logged-in pages. Prefer
   `getByRole`/`getByLabel`; the frontend has no `data-testid`s yet — add them to new interactive
   elements rather than relying on text.
+- Booking a demo clinician at an exact time: use a fixed slot (`${uniqueDay()}T10:00:00+05:30`), never "now + N days",
+  which crosses the demo fixture's sessions at some time of day (409); `bookSession` is only for "around this time".
 - Note: the monorepo root `.gitignore` ignores `package-lock.json`; pin versions in `package.json`.

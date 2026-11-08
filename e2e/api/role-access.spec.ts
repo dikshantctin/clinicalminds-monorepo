@@ -1,6 +1,7 @@
 import { request as pwRequest, APIRequestContext, APIResponse } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
 import { env, uniq, RANDOM_UUID, DEMO_THERAPIST, DEMO_PSYCHOLOGIST, DEMO_PATIENT } from '../src/env';
+import { uniqueDay } from '../src/sessions';
 
 /**
  * Role-based access, table-driven: every row asserts ONE exact status. A failing row is a real
@@ -264,7 +265,7 @@ test.describe('role access: clinicians see only patients assigned to them', () =
       patientId = patient.id;
       expect(patient.assigned_therapist_id).toBe(therapist.userId);
       expect((await therapist.ctx.get(`/api/v1/patients/${patient.id}`)).status()).toBe(200);
-      const at = new Date(Date.now() + 5 * 86_400_000).toISOString();
+      const at = `${uniqueDay()}T10:00:00+05:30`; // a fixed slot no demo session can hold (README: book a fixed slot)
       const booked = await therapist.ctx.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: at, duration_minutes: 50 } });
       expect(booked.status(), await booked.text()).toBe(200);
       await api.post(`/api/v1/sessions/${(await booked.json()).id}/cancel`, { data: { reason: 'e2e cleanup' } });
@@ -280,7 +281,8 @@ test.describe('role access: clinicians see only patients assigned to them', () =
     const patient = await created.json();
     const therapist = await loginAs(DEMO_THERAPIST);
     const portal = await loginAs(DEMO_PATIENT);
-    const data = { patient_id: patient.id, scheduled_at: new Date(Date.now() + 5 * 86_400_000).toISOString(), duration_minutes: 50 };
+    // a fixed slot: "now + 5 days" hit the demo admin's day-5 14:00 fixture session between ~13:10 and 14:50 IST (409)
+    const data = { patient_id: patient.id, scheduled_at: `${uniqueDay()}T11:00:00+05:30`, duration_minutes: 50 };
     try {
       const byTherapist = await therapist.ctx.post('/api/v1/sessions/', { data });
       expect(byTherapist.status(), await byTherapist.text()).toBe(403);

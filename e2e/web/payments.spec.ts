@@ -163,9 +163,10 @@ test.describe('public booking pays the clinic', () => {
       await page.getByTestId('booking-pay').click();
       // Razorpay Checkout mounts its own iframe, opened with the clinic's key
       await expect(page.locator('iframe.razorpay-checkout-frame')).toBeAttached({ timeout: 20_000 });
-      // NPCI retired UPI Collect (28 Feb 2026): Razorpay requires hiding its flow, and desktop then shows the UPI QR
-      const options = await page.evaluate(() => (window as unknown as { __rzpOptions: { config?: unknown } }).__rzpOptions);
-      expect(options.config).toEqual({ display: { hide: [{ method: 'upi', flows: ['collect'] }] } });
+      // The demo clinic uses TEST keys: UPI Collect stays (test mode pays by UPI ID success@razorpay); see checkout-upi.spec.ts
+      const options = await page.evaluate(() => (window as unknown as { __rzpOptions: { key: string; config?: unknown } }).__rzpOptions);
+      expect(options.key).toMatch(/^rzp_test_/);
+      expect(options.config).toBeUndefined();
       const row = (await (await api.get('/api/v1/sessions/', { params: { limit: 500 } })).json()).sessions.find((s: { id: string }) => s.id === reference);
       expect(row).toEqual(expect.objectContaining({ booked_via: 'web', payment_status: 'pending', amount_paise: 100 }));
     } finally {
