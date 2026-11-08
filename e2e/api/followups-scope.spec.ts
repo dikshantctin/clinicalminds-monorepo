@@ -27,7 +27,7 @@ type Card = { id: string; related_patient_id: string };
 
 const ok = async <T>(res: Awaited<ReturnType<APIRequestContext['get']>>): Promise<T> => {
   expect(res.status(), await res.text()).toBe(200);
-  return res.json();
+  return (await res.json()) as T;
 };
 
 test.describe('follow-up cards are scoped to the clinician', () => {

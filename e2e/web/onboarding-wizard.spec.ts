@@ -49,6 +49,19 @@ test.describe('onboarding wizard validation', () => {
     await expect(stepHeading(page)).toHaveText('Choose Your Plan');
   });
 
+  test('step 1: an over-long or emptied field shows its own message and blocks Next', async ({ page }) => {
+    await page.goto('/auth/register');
+    await fillOrganization(page, uniq('onb-web'));
+    await page.getByLabel('City').fill('x'.repeat(101));
+    await page.getByLabel('Postal Code').fill('   ');
+    await next(page).click();
+
+    await expect(stepHeading(page)).toHaveText('Organization Details');
+    await expect(page.getByText('At most 100 characters')).toBeVisible();
+    await expect(page.getByText('Postal code is required')).toBeVisible();
+    await expect(page.getByLabel('City')).toHaveAttribute('aria-invalid', 'true');
+  });
+
   test('step 2: plan cards show exact limits and promise no feature that does not exist', async ({ page }) => {
     await page.goto('/auth/register');
     await fillOrganization(page, uniq('onb-web'));
