@@ -130,7 +130,8 @@ src/
   one on demand ("Refresh follow-ups"). Page views do not write the queue.
 - **Onboarding + verification**: public business registration (`/onboarding/*`); admin email and phone are
   verified through the phone.email widget (`/verification/*`, hard gate: 403 `verification_required` for
-  unverified users; demo/test identities are allow-listed in `VERIFICATION_TEST_*`). The SMTP OTP (`/otp/*`) is unused.
+  unverified users; in dev/CI only, `VERIFICATION_TEST_EMAILS` / `_PHONES` list identities that count as proven, each
+  for its own channel: empty by default, refused in production). The SMTP OTP (`/otp/*`) is unused.
 - **Compliance**: DPDP Act 2023, audit logging, crisis escalation, tenant isolation, de-identification before external AI calls.
 
 ## Patterns
@@ -164,8 +165,8 @@ const mutation = useMutation(PatientAPI.updatePatient, {
 2. **Multi-tenant Isolation**: never allow cross-tenant data access; tenant comes from the JWT.
 3. **No invented numbers**: every figure a clinic sees must come from its own rows (see `demo_data.py` for demos).
 4. **Professional UI**: healthcare-grade appearance, WCAG 2.1 AA.
-5. **Known defects** are listed per component in each `CLAUDE.md` (e.g. backend `register`/`refresh-token`
-   stubs, orphaned frontend jest tests, de-id frontend lacks `package.json`). Check before building on an endpoint.
+5. **Known defects** are listed per component in each `CLAUDE.md` (e.g. backend `verify-email`
+   stub, orphaned frontend jest tests, de-id frontend lacks `package.json`). Check before building on an endpoint.
 
 ## Common Tasks
 

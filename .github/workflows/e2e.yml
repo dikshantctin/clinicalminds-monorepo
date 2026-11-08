@@ -115,6 +115,9 @@ jobs:
           OPENAI_API_KEY=unused-in-ci
           EMAIL_OUTBOX_DIR=.email-outbox
           RATE_LIMIT_IP_SCALE=100  # every spec shares one IP; per-account limits stay at production values
+          # dev/test only (empty by default, refused in production): proven without phone.email, each for its own channel
+          VERIFICATION_TEST_EMAILS=demo@clinicalmind.com,dr.smith@democlinic.com,therapist.jane@democlinic.com,patient.demo@democlinic.com,@example.com
+          VERIFICATION_TEST_PHONES=+919876543210,+919876543211
           EOF
 
       # the whole venv, not just pip's download cache: a hit skips the install entirely

@@ -101,6 +101,10 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        kanban, kanban-comments (author_name / user_name, history newest first and capped at 50, plain status values, no description text; 401 / 403 PATIENT / 422), teams, tenants (+branding/schedules/catalog), overview (the dashboard's four
                        live numbers), otp-onboarding,
                        verification (phone.email endpoints + the 403 verification_required gate),
+                       verification-bypass (onboarding checks each channel on its own: a test phone never clears an
+                       unproven email, nor a test email an unproven phone; a clinic's staff email is refused as registered,
+                       a patient's as in use, but only once the email is proven: before that both get the generic
+                       "already exists", and /complete checks the proof first; an unproven staff phone gets only the verification error),
                        booking (public self-booking: info, slots, booking → clinic + therapist lists, 409/400),
                        payments (the clinic's own Razorpay keys, read from the demo DB: role gate, 422/400 validation,
                        secret never returned; once the demo clinic is connected: Rs 1 booking → order on the clinic's
@@ -208,7 +212,6 @@ runs for real. Live status on 2026-10-28: 101 passed, 9 fixme, 5 skipped (de-id 
 
 | Spec | Reason |
 |---|---|
-| `api/auth.spec.ts` register | `auth.register` returns placeholder ids, never writes to DB (real signup is `/onboarding/complete`) |
 | `api/otp-onboarding.spec.ts` generate | needs SMTP credentials |
 
 Two Playwright processes must not share `test-results/` (you get `ENOENT … trace` errors, not real
