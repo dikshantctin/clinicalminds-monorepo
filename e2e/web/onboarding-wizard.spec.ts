@@ -91,13 +91,25 @@ test.describe('onboarding wizard validation', () => {
     await expect(stepHeading(page)).toHaveText('Verify Contact Information');
     await expect(page.getByText('No phone entered')).toHaveCount(0);
 
-    // Reach Review with verification stubbed (phone.email is a third-party widget) and check the payload
-    await page.route('**/api/v1/verification/status**', (route) =>
-      route.fulfill({ json: { email_verified: true, phone_verified: true } }),
-    );
+    // Reach Review with verification stubbed (phone.email is a third-party widget) and check the payload.
+    // The proofs live on this tab's sign-up attempt: a token in sessionStorage, resumed when the step opens.
+    const token = `e2e-attempt-${id}`;
+    await page.evaluate((t) => sessionStorage.setItem('signup_attempt_token', t), token);
+    const resumed: string[] = [];
+    await page.route('**/api/v1/verification/signup-attempt', (route) => {
+      resumed.push(route.request().postDataJSON().attempt_token);
+      return route.fulfill({
+        json: {
+          attempt_token: token, email: `${id}-admin@example.com`, email_verified: true,
+          phone: '+919876543210', phone_verified: true, expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        },
+      });
+    });
     await page.getByRole('button', { name: 'Previous' }).click();
     await next(page).click();
+    await expect(page.getByTestId('verify-email')).toContainText('Verified');
     await expect(page.getByTestId('verify-phone')).toContainText('Verified');
+    expect(resumed).toContain(token);
     await next(page).click();
     await expect(stepHeading(page)).toHaveText('Team Members');
 
@@ -122,6 +134,7 @@ test.describe('onboarding wizard validation', () => {
     await expect(page.getByText('Country', { exact: true })).toBeVisible();
     await next(page).click(); // Complete Setup → validate first
     const body = (await validate).postDataJSON();
+    expect(body.attempt_token).toBe(token); // the attempt goes with the request, never in a URL
     expect(body.organization.country).toBe('India');
     expect(body.plan.features).not.toHaveProperty('ai_enabled');
     expect(body.plan.features).not.toHaveProperty('crisis_detection');
@@ -130,6 +143,9 @@ test.describe('onboarding wizard validation', () => {
     expect(body.team_members[0]).not.toHaveProperty('license_number');
     const done = await complete; // the wizard really creates the clinic: delete it in afterAll
     expect(done.status(), await done.text()).toBe(200);
+    expect(done.request().postDataJSON().attempt_token).toBe(token);
+    // used up with the clinic: the tab forgets it
+    expect(await page.evaluate(() => sessionStorage.getItem('signup_attempt_token'))).toBeNull();
     created.push(`${id}-admin@example.com`);
   });
 });

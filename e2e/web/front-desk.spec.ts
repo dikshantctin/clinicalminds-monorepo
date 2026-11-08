@@ -5,6 +5,7 @@ import { E2E_CLINIC, deleteClinic } from '../src/clinics';
 import { LoginPage } from '../src/pages/login.page';
 import { DashboardPage } from '../src/pages/dashboard.page';
 import { AddPatientPage } from '../src/pages/patients.page';
+import { searchFor, PATIENTS_LIST } from '../src/search';
 
 // The front desk (SUPPORT_STAFF) works Patients and Sessions without seeing clinical content.
 const PASSWORD = 'Password123!';
@@ -109,7 +110,7 @@ test.describe('front desk (SUPPORT_STAFF) in the browser', () => {
     await expect(page).toHaveURL(/\/dashboard\/patients$/);
 
     // the list has no Diagnosis column; the record has no Clinical Data tab
-    await page.getByRole('searchbox', { name: 'Search patients' }).fill(walkIn);
+    await searchFor(page, page.getByRole('searchbox', { name: 'Search patients' }), walkIn, PATIENTS_LIST);
     const row = page.locator('tr', { hasText: walkIn });
     await expect(row).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Diagnosis' })).toHaveCount(0);
