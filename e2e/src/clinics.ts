@@ -154,11 +154,11 @@ export async function onboardOwnClinic(prefix: string, team: string[] = []): Pro
           address_line1: '1 MG Road', city: 'Pune', state: 'MH', postal_code: '411001',
         },
         plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
-        admin: { email: adminEmail, password: 'Password123!', first_name: 'Hema', last_name: 'Hours', phone },
+        admin: { email: adminEmail, password: 'Password123!', first_name: 'Reg', last_name: 'Istrant', phone },
         admin_role: 'ADMIN',
         team_members: [
           {
-            email: `director.${slug}@example.com`, first_name: 'Dee', last_name: 'Rector', role: 'PSYCHOLOGIST', phone, license_number: 'E2E-LIC-1',
+            email: `director.${slug}@example.com`, first_name: 'Hema', last_name: 'Hours', role: 'PSYCHOLOGIST', phone, license_number: 'E2E-LIC-1',
             temporary_password: 'Password123!', send_invitation: false,
           },
           ...team.map((role, i) => ({
