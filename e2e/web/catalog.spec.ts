@@ -86,7 +86,11 @@ test.describe('admin Services page', () => {
     // the page size is 20 (APP_CONFIG.PAGE_SIZE): 21 rows make a second page
     for (let i = 1; i <= 21; i += 1) await createService(api, created, { name: `${prefix} ${String(i).padStart(2, '0')}` });
     await page.goto('/admin/services');
+    // wait for the searched page itself: when the clinic holds only these 21 services, the unfiltered first
+    // page also reads "Showing 1–20 of 21", and Next would then page the unfiltered list
+    const searched = page.waitForResponse((r) => r.url().includes('/api/v1/catalog/services?') && new URL(r.url()).searchParams.get('search') === prefix);
     await page.getByTestId('service-search').fill(prefix);
+    await searched;
     await expect(page.getByText('Showing 1–20 of 21')).toBeVisible();
     await page.getByRole('button', { name: /next/i }).click();
     await expect(page.getByText('Showing 21–21 of 21')).toBeVisible();
