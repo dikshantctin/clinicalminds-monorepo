@@ -4,6 +4,17 @@ import { assignDemoClinicians, cleanupServices, createService, demoClinicianIds 
 import { openDay } from '../src/days';
 
 const created: string[] = [];
+const onPhone: string[] = []; // patients a test put on TEST_PHONE, removed after it
+
+/** Someone already on the test phone, so the page asks who the booking is for. Never rely on what ran before:
+ * in a CI shard, no earlier spec may have booked with this phone. */
+async function someoneOnTestPhone(api: any): Promise<string> {
+  const res = await api.post('/api/v1/patients/', { data: { first_name: uniq('Sibling'), last_name: 'Patient', phone: TEST_PHONE } });
+  expect(res.status(), await res.text()).toBe(200);
+  const { id } = await res.json();
+  onPhone.push(id);
+  return id;
+}
 
 const TEST_PHONE = '+919876543210'; // test-listed: no phone.email round-trip needed
 
@@ -14,7 +25,10 @@ test.describe('public booking page (/book/<firmCode>)', () => {
   requireApi();
   requireAuth();
   test.use({ storageState: { cookies: [], origins: [] } }); // a patient has no login
-  test.afterEach(async ({ api }) => cleanupServices(api, created));
+  test.afterEach(async ({ api }) => {
+    await cleanupServices(api, created);
+    for (const id of onPhone.splice(0)) await api.delete(`/api/v1/patients/${id}`);
+  });
 
   test('after choosing a service, only the clinicians who offer it are listed', async ({ page, api, auth }) => {
     const svc = await api.post('/api/v1/catalog/services', {
@@ -95,6 +109,7 @@ test.describe('public booking page (/book/<firmCode>)', () => {
     // free service: no payment step, whether or not the clinic has connected Razorpay (web/payments.spec.ts covers paid)
     const service = await createService(api, created, { name: uniq('Walk-in consult'), price: 0 });
     await assignDemoClinicians(api, service.id);
+    await someoneOnTestPhone(api);
 
     await page.goto(`/book/${auth.firmCode}`);
     await expect(page.getByTestId('booking-page')).toBeVisible();

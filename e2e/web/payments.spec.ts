@@ -135,6 +135,10 @@ test.describe('public booking pays the clinic', () => {
     });
     const service = await createService(api, created, { name: uniq('Rs 1 test consult'), price: 1 });
     await assignDemoClinicians(api, service.id);
+    // someone already on the phone, so the page asks who the booking is for (in a CI shard no earlier spec may have booked with it)
+    const sibling = await api.post('/api/v1/patients/', { data: { first_name: uniq('Sibling'), last_name: 'Patient', phone: TEST_PHONE } });
+    expect(sibling.status(), await sibling.text()).toBe(200);
+    const siblingId = (await sibling.json()).id;
 
     await page.goto(`/book/${auth.firmCode}`);
     await expect(page.getByTestId(`service-${service.id}`)).toContainText('50 min · ₹1');
@@ -146,7 +150,7 @@ test.describe('public booking pays the clinic', () => {
     await slotButtons.last().click();
     await page.getByTestId('booking-phone').fill(TEST_PHONE);
     await page.getByTestId('booking-phone').blur();
-    await page.getByTestId('booking-for-new').click(); // the shared test phone already has patients
+    await page.getByTestId('booking-for-new').click();
     await page.getByTestId('booking-first-name').fill(uniq('Pay'));
     await page.getByTestId('booking-last-name').fill('Online');
     await page.getByTestId('booking-submit').click();
@@ -166,6 +170,7 @@ test.describe('public booking pays the clinic', () => {
       expect(row).toEqual(expect.objectContaining({ booked_via: 'web', payment_status: 'pending', amount_paise: 100 }));
     } finally {
       await api.post(`/api/v1/sessions/${reference}/cancel`, { data: { reason: 'e2e cleanup' } });
+      await api.delete(`/api/v1/patients/${siblingId}`);
     }
   });
 });
