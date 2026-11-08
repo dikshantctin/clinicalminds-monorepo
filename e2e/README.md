@@ -102,7 +102,8 @@ api/                   health, auth, security (guards, tenant isolation, permiss
                        verification (phone.email endpoints + the 403 verification_required gate),
                        verification-bypass (onboarding checks each channel on its own: a test phone never clears an
                        unproven email, nor a test email an unproven phone; a clinic's staff email is refused as registered,
-                       a patient's as in use; an unproven staff phone gets only the verification error),
+                       a patient's as in use, but only once the email is proven: before that both get the generic
+                       "already exists", and /complete checks the proof first; an unproven staff phone gets only the verification error),
                        booking (public self-booking: info, slots, booking → clinic + therapist lists, 409/400),
                        payments (the clinic's own Razorpay keys, read from the demo DB: role gate, 422/400 validation,
                        secret never returned; once the demo clinic is connected: Rs 1 booking → order on the clinic's

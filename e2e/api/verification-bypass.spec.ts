@@ -1,6 +1,6 @@
 import { APIRequestContext } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { uniq } from '../src/env';
+import { uniq, UNVERIFIED_USER } from '../src/env';
 import { ALLOW_LISTED_PHONE, CLINIC_PASSWORD, E2E_CLINIC, deleteClinic, loginAs, onboardClinic } from '../src/clinics';
 import { portalAccount } from '../src/portal-account';
 
@@ -8,7 +8,7 @@ import { portalAccount } from '../src/portal-account';
  * The onboarding verification gate checks each channel on its own: a test phone (VERIFICATION_TEST_PHONES) skips
  * only the phone proof, a test email (VERIFICATION_TEST_EMAILS; CI lists the reserved domain "@example.com")
  * only the email proof. An admin email or phone already used by a clinic's staff is refused, without telling an
- * unproven caller whose number it is. Proof from phone.email itself (the channel swap, a proven duplicate phone)
+ * unproven caller whose number it is, or whether an email belongs to a clinic or to a patient (health data). Proof from phone.email itself (the channel swap, a proven duplicate phone)
  * is covered by backend pytest: e2e cannot drive the vendor.
  */
 
@@ -112,6 +112,33 @@ test.describe('onboarding: a patient account', () => {
       expect(await validationErrors(anon, payload(slug, { email: patient.email, phone: ALLOW_LISTED_PHONE }))).toEqual([EMAIL_IN_USE]);
     } finally {
       await patient.cleanup();
+    }
+  });
+});
+
+test.describe('onboarding: no account details for an unproven email', () => {
+  requireApi();
+  requireAuth();
+
+  test("a patient's and a staff member's email get the same answer until the email is proven", async ({ anon, api }) => {
+    // example.org is on no allow-list, so neither address counts as proven
+    const created = await api.post('/api/v1/patients/', { data: { first_name: uniq('Unproven'), last_name: 'Patient' } });
+    expect(created.status(), await created.text()).toBe(200);
+    const patientId: string = (await created.json()).id;
+    const patientEmail = `${uniq('patient')}@example.org`.toLowerCase();
+    const invited = await api.post(`/api/v1/patients/${patientId}/invite`, { data: { email: patientEmail, first_name: 'Un', last_name: 'Proven' } });
+    expect(invited.status(), await invited.text()).toBe(200);
+    try {
+      for (const email of [patientEmail, UNVERIFIED_USER.email]) {
+        const slug = uniq('vb').toLowerCase();
+        const data = payload(slug, { email, phone: ALLOW_LISTED_PHONE });
+        // whether the account is a clinic's or a patient's is not said: only that the address is taken
+        expect(await validationErrors(anon, data)).toEqual([`User with email ${email} already exists`]);
+        // /complete checks the proof first and says nothing about accounts
+        expect(await gateErrors(anon, data)).toEqual([EMAIL_REQUIRED]);
+      }
+    } finally {
+      await api.delete(`/api/v1/patients/${patientId}`);
     }
   });
 });
