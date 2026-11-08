@@ -74,6 +74,13 @@ test.describe('onboarding wizard validation', () => {
     await page.getByTestId('plan-professional').click();
     await next(page).click();
     await expect(stepHeading(page)).toHaveText('Administrator Setup');
+    // whoever registers is the clinic's ADMIN: no role to choose, and the owner is told an admin can't be booked
+    await expect(page.getByText('Administrator Role')).toHaveCount(0);
+    await expect(page.getByRole('radio', { name: /Clinical Director/ })).toHaveCount(0);
+    await expect(page.getByTestId('admin-owner-note')).toHaveText(
+      "You will be this clinic's Admin. An admin account can't be booked: if you also see patients, add yourself on the Team Members step under another email as a Psychologist or Therapist.",
+    );
+    await expect(page.getByLabel('License Number (optional)')).toBeVisible();
 
     await page.getByLabel('First Name').fill('E2E');
     await page.getByLabel('Last Name').fill('Admin');
@@ -129,5 +136,14 @@ test.describe('onboarding wizard validation', () => {
     const done = await complete; // the wizard really creates the clinic: delete it in afterAll
     expect(done.status(), await done.text()).toBe(200);
     created.push(`${id}-admin@example.com`);
+    expect(body.admin_role).toBe('ADMIN');
+
+    // success screen: the login button, the owner note, and no "View Documentation" (internal docs are staff-only)
+    await expect(page.getByRole('link', { name: 'Login to Your Account' })).toBeVisible();
+    await expect(page.getByTestId('success-owner-note')).toHaveText(
+      "You are this clinic's Admin, and an admin account can't be booked. If you also see patients, invite yourself under another email as a Psychologist or Therapist in Settings → Users & Permissions.",
+    );
+    await expect(page.getByText('View Documentation')).toHaveCount(0);
+    await expect(page.locator('a[href="/docs"]')).toHaveCount(0);
   });
 });

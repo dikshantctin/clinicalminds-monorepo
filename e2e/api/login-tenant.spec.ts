@@ -13,7 +13,7 @@ const PASSWORD = 'Password123!';
 const REFUSED = 'No access to this clinic';
 
 const onboard = async (
-  anon: APIRequestContext, adminEmail: string, team: { email: string; role: string }[] = [], adminRole = 'ADMIN',
+  anon: APIRequestContext, adminEmail: string, team: { email: string; role: string }[] = [],
 ): Promise<string> => {
   const slug = uniq('lt').toLowerCase();
   const res = await anon.post('/api/v1/onboarding/complete', {
@@ -24,7 +24,7 @@ const onboard = async (
       },
       plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
       admin: { email: adminEmail, password: PASSWORD, first_name: 'Login', last_name: 'Tenant', phone: ALLOW_LISTED_PHONE },
-      admin_role: adminRole,
+      admin_role: 'ADMIN',
       team_members: team.map((m) => ({ ...m, first_name: 'Team', last_name: 'Member', send_invitation: false })),
     },
   });
@@ -69,10 +69,10 @@ test.describe('login picks the clinic only from an active membership', () => {
   test("a member of two clinics gets each clinic's token with that clinic's role", async ({ anon }) => {
     const x = `x.${uniq('lt').toLowerCase()}@example.com`;
     const y = `y.${uniq('lt').toLowerCase()}@example.com`;
-    const tenantA = await onboard(anon, x, [], 'CLINICAL_DIRECTOR'); // x: CLINICAL_DIRECTOR of A (primary)
+    const tenantA = await onboard(anon, x); // x registers A: its ADMIN (primary)
     let tenantB = '';
     try {
-      tenantB = await onboard(anon, y, [{ email: x, role: 'ADMIN' }]); // x: ADMIN of B
+      tenantB = await onboard(anon, y, [{ email: x, role: 'SUPPORT_STAFF' }]); // x: front desk of B (sees every patient)
       const xLogin = await (await anon.post('/api/v1/auth/login', { data: { email: x, password: PASSWORD } })).json();
       const xCtx = await bearer(xLogin.access_token);
       expect((await xCtx.post('/api/v1/patients/', { data: { first_name: uniq('OnlyInA'), last_name: 'Patient' } })).status()).toBe(200);
@@ -86,7 +86,7 @@ test.describe('login picks the clinic only from an active membership', () => {
       const inB = await anon.post('/api/v1/auth/login', { data: { email: x, password: PASSWORD, tenant_id: tenantB } });
       expect(inB.status(), await inB.text()).toBe(200);
       const b = await inB.json();
-      expect([b.tenant.id, b.user.role]).toEqual([tenantB, 'ADMIN']);
+      expect([b.tenant.id, b.user.role]).toEqual([tenantB, 'SUPPORT_STAFF']);
       const xb = await bearer(b.access_token);
       try {
         const names = ((await (await xb.get('/api/v1/patients/')).json()).patients as { first_name: string }[]).map((p) => p.first_name);
@@ -96,9 +96,9 @@ test.describe('login picks the clinic only from an active membership', () => {
       }
 
       const inA = await (await anon.post('/api/v1/auth/login', { data: { email: x, password: PASSWORD, tenant_id: tenantA } })).json();
-      expect([inA.tenant.id, inA.user.role]).toEqual([tenantA, 'CLINICAL_DIRECTOR']);
+      expect([inA.tenant.id, inA.user.role]).toEqual([tenantA, 'ADMIN']);
       const primary = await (await anon.post('/api/v1/auth/login', { data: { email: x, password: PASSWORD } })).json();
-      expect([primary.tenant.id, primary.user.role]).toEqual([tenantA, 'CLINICAL_DIRECTOR']);
+      expect([primary.tenant.id, primary.user.role]).toEqual([tenantA, 'ADMIN']);
     } finally {
       if (tenantB) await deleteClinic(y); // B first: x still belongs to A, so B's delete keeps x
       await deleteClinic(x);
