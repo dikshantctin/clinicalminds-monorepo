@@ -83,7 +83,7 @@ test.describe('verification gate', () => {
       data: {
         organization: { name: `Clinic ${slug}`, type: 'clinic', contact_email: `${slug}@example.com`, contact_phone: '+919111111111', address_line1: '1 Road', city: 'Pune', state: 'MH', postal_code: '411001' },
         plan: { plan_type: 'basic', max_users: 5, max_patients: 100, max_sessions_per_month: 500 },
-        admin: { email: `admin.${slug}@example.com`, password: 'Password123!', first_name: 'New', last_name: 'Admin', phone: '+919222222222' },
+        admin: { email: `admin.${slug}@example.org`, password: 'Password123!', first_name: 'New', last_name: 'Admin', phone: '+919222222222' }, // example.org: on no allow-list
         admin_role: 'ADMIN',
         team_members: [],
       },
