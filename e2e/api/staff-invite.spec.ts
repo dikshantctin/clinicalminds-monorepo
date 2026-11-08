@@ -217,6 +217,40 @@ test.describe('staff invite, role change, removal', () => {
     }
   });
 
+  test('set-password: an invitee removed before setting a password cannot activate; an expired link is refused', async ({ anon }) => {
+    const { owner } = await onboardClinic(anon);
+    const admin = await loginAs(owner);
+    const tenantId = admin.tenant.id;
+    try {
+      const removed = email('removed');
+      expect((await inviteStaff(admin.ctx, tenantId, { email: removed, role: 'THERAPIST' })).status()).toBe(200);
+      const token = inviteTokenFor(removed);
+      const id = (await users(admin.ctx, tenantId)).find((u) => u.email === removed)!.id;
+      expect((await admin.ctx.delete(`/api/v1/tenants/${tenantId}/users/${id}`)).status()).toBe(200);
+      const set = await anon.post('/api/v1/auth/set-password', { data: { token, password: NEW_PASSWORD } });
+      expect(set.status(), await set.text()).toBe(400);
+      expect(await message(set)).toBe('This invitation is no longer valid');
+      expect((await anon.post('/api/v1/auth/login', { data: { email: removed, password: NEW_PASSWORD } })).status()).toBe(401);
+
+      const late = email('late');
+      expect((await inviteStaff(admin.ctx, tenantId, { email: late, role: 'INTERN' })).status()).toBe(200);
+      const lateId = (await users(admin.ctx, tenantId)).find((u) => u.email === late)!.id;
+      const expired = await anon.post('/api/v1/auth/set-password', {
+        data: { token: staffInviteToken(lateId, tenantId, -60), password: NEW_PASSWORD },
+      });
+      expect(expired.status(), await expired.text()).toBe(400);
+      expect(await message(expired)).toBe('Invalid or expired token');
+      // the same claims with a live expiry work: the 400 above was the expiry, not the signature
+      const live = await anon.post('/api/v1/auth/set-password', {
+        data: { token: staffInviteToken(lateId, tenantId, 600), password: NEW_PASSWORD },
+      });
+      expect(live.status(), await live.text()).toBe(200);
+    } finally {
+      await admin.ctx.dispose();
+      await deleteClinic(owner);
+    }
+  });
+
   test('resend invite: a pending invitee gets a new working link; 409 once a password is set, 404 not staff, only an ADMIN resends to an ADMIN', async ({ anon, api }) => {
     const adminEmail = email('radmin');
     const therapistEmail = email('rther');
@@ -281,40 +315,6 @@ test.describe('staff invite, role change, removal', () => {
       }
     } finally {
       await director.ctx.dispose();
-      await deleteClinic(owner);
-    }
-  });
-
-  test('set-password: an invitee removed before setting a password cannot activate; an expired link is refused', async ({ anon }) => {
-    const { owner } = await onboardClinic(anon);
-    const admin = await loginAs(owner);
-    const tenantId = admin.tenant.id;
-    try {
-      const removed = email('removed');
-      expect((await inviteStaff(admin.ctx, tenantId, { email: removed, role: 'THERAPIST' })).status()).toBe(200);
-      const token = inviteTokenFor(removed);
-      const id = (await users(admin.ctx, tenantId)).find((u) => u.email === removed)!.id;
-      expect((await admin.ctx.delete(`/api/v1/tenants/${tenantId}/users/${id}`)).status()).toBe(200);
-      const set = await anon.post('/api/v1/auth/set-password', { data: { token, password: NEW_PASSWORD } });
-      expect(set.status(), await set.text()).toBe(400);
-      expect(await message(set)).toBe('This invitation is no longer valid');
-      expect((await anon.post('/api/v1/auth/login', { data: { email: removed, password: NEW_PASSWORD } })).status()).toBe(401);
-
-      const late = email('late');
-      expect((await inviteStaff(admin.ctx, tenantId, { email: late, role: 'INTERN' })).status()).toBe(200);
-      const lateId = (await users(admin.ctx, tenantId)).find((u) => u.email === late)!.id;
-      const expired = await anon.post('/api/v1/auth/set-password', {
-        data: { token: staffInviteToken(lateId, tenantId, -60), password: NEW_PASSWORD },
-      });
-      expect(expired.status(), await expired.text()).toBe(400);
-      expect(await message(expired)).toBe('Invalid or expired token');
-      // the same claims with a live expiry work: the 400 above was the expiry, not the signature
-      const live = await anon.post('/api/v1/auth/set-password', {
-        data: { token: staffInviteToken(lateId, tenantId, 600), password: NEW_PASSWORD },
-      });
-      expect(live.status(), await live.text()).toBe(200);
-    } finally {
-      await admin.ctx.dispose();
       await deleteClinic(owner);
     }
   });
