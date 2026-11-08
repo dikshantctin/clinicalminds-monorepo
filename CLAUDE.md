@@ -165,8 +165,8 @@ const mutation = useMutation(PatientAPI.updatePatient, {
 2. **Multi-tenant Isolation**: never allow cross-tenant data access; tenant comes from the JWT.
 3. **No invented numbers**: every figure a clinic sees must come from its own rows (see `demo_data.py` for demos).
 4. **Professional UI**: healthcare-grade appearance, WCAG 2.1 AA.
-5. **Known defects** are listed per component in each `CLAUDE.md` (e.g. backend `register`/`refresh-token`
-   stubs, orphaned frontend jest tests, de-id frontend lacks `package.json`). Check before building on an endpoint.
+5. **Known defects** are listed per component in each `CLAUDE.md` (e.g. backend `verify-email`
+   stub, orphaned frontend jest tests, de-id frontend lacks `package.json`). Check before building on an endpoint.
 
 ## Common Tasks
 
@@ -175,10 +175,14 @@ const mutation = useMutation(PatientAPI.updatePatient, {
 2. Identity/tenant via dependencies; add permission checks.
 3. Client method in `frontend/src/services/api.ts`.
 4. Spec in `e2e/api/`; row in the API table of `backend/CLAUDE.md`.
+5. Line in the feature register `backend/app/platform_docs/register.md` (endpoint, route, roles, specs):
+   `backend/tests/test_platform_docs_register.py` fails on an endpoint it does not name, and
+   `e2e/api/docs-register.spec.ts` on a frontend route or spec it does not name.
 
 ### Adding a Page
 1. Page in `frontend/src/pages/`, route + `RoleGuard` in `App.tsx`, sidebar entry in `config/navigation.ts`.
 2. Add `data-testid`s to interactive elements; spec in `e2e/web/`.
+3. Name the route and its specs in the feature register (`backend/app/platform_docs/register.md`).
 
 ### Adding Database Models
 1. Tenant data → tenant DB models; platform data → `models/platform.py`.
@@ -229,7 +233,7 @@ There is CI only, no deployment pipeline. Four GitHub Actions workflows:
 | monorepo | `.github/workflows/audit.yml` | weekly (Mon 02:30 IST), manual — not a PR gate | `pip-audit` on `backend/requirements-dev.txt`, `npm audit --audit-level=high` on `frontend` and `e2e`; red while known vulnerabilities remain, report in the run summary |
 | `backend` | `.github/workflows/ci.yml` | push to `main`, PR | Postgres service → `create_all` via `import main` → `make check` (ruff, mypy, pytest) |
 | `frontend` | `.github/workflows/ci.yml` | push to `main`, PR | `npm ci` → `make check` (lint, build — `build` runs `tsc`) |
-| monorepo | `.github/workflows/e2e.yml` | PR, push to `main` (both skip Markdown-only changes), manual; nightly 02:00 IST with backend/frontend at their latest `main` (manual: `submodule_heads`) | checkout with submodules → Postgres + Redis (rate-limit counters, Celery broker) → backend on :8000 (`create_all`, `alembic stamp head`) → follow-up worker (`celery … worker -B`) → `setup_demo_data.py` + `demo_data.py import` → `connect_demo_razorpay.py` (Razorpay TEST keys from secrets) → `vite build` + `vite preview` on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
+| monorepo | `.github/workflows/e2e.yml` | PR, push to `main` (both skip Markdown-only changes), manual; nightly 02:00 IST with backend/frontend at their latest `main` (manual: `submodule_heads`) | checkout with submodules → Postgres + Redis (rate-limit counters, Celery broker) → `alembic upgrade head` on the empty tenant DB → backend on :8000 (`create_all` for the platform DB) → follow-up worker (`celery … worker -B`) → `setup_demo_data.py` + `demo_data.py import` → `connect_demo_razorpay.py` (Razorpay TEST keys from secrets) → `vite build` + `vite preview` on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
 
 Merge order for a change spanning repos: backend PR (green) → frontend PR (green) → monorepo PR that bumps the
 submodule pointers (its e2e runs against exactly those commits). A pointer must name a commit on the submodule's

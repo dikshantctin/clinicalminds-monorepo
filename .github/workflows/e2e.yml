@@ -137,7 +137,13 @@ jobs:
           fi
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
-      - name: Start backend (startup create_all builds the platform + tenant schema)
+      # The tenant schema comes from migrations alone, as a fresh production database would, so a model change
+      # with no revision fails here (a create_all schema once hid that tasktype lacked PATIENT_FOLLOWUP).
+      - name: Alembic upgrade head (builds the tenant schema from an empty database)
+        working-directory: backend
+        run: alembic upgrade head && alembic current
+
+      - name: Start backend (startup create_all builds the platform schema; the tenant schema already exists)
         working-directory: backend
         run: |
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
@@ -151,15 +157,13 @@ jobs:
           for i in $(seq 1 30); do grep -q "ready" /tmp/worker.log && exit 0; sleep 1; done
           cat /tmp/worker.log; exit 1
 
-      - name: Alembic (schema came from create_all, so stamp rather than replay migrations)
-        working-directory: backend
-        run: alembic stamp head && alembic current
-
       - name: Seed demo clinic + demo rows
         working-directory: backend
         run: |
           python scripts/setup_demo_data.py
           python scripts/demo_data.py import scripts/fixtures/demo_clinic.json
+          # the seed never grants platform staff (its password is in the repo); the /docs specs need one
+          python scripts/platform_staff.py grant platform.staff@example.com --by e2e-ci
 
       - name: Connect the demo clinic's Razorpay TEST account (the payments specs skip without one)
         working-directory: backend
