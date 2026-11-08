@@ -209,6 +209,21 @@ The actual payment cannot be automated (Razorpay Checkout is a vendor iframe), s
 3. The confirmation shows "Paid ₹1", Sessions shows the "Paid ₹1" badge, and the payment appears in the
    Razorpay test dashboard under the clinic's account.
 
+Automating this payment was tried (Nov 2026) and parked: 0 of 3 CI runs passed, all stalled inside Razorpay.
+Razorpay's test Checkout is a vendor UI that does not follow one path, so a spec driving it was not reliable.
+What we learned, in case it is tried again:
+- **It is slow to start:** about 30 s from Pay to a usable form and about 60 s to the bank step (locally). On some runs it
+  never opened within 90 s.
+- **It rejects the dummy number:** Razorpay refuses the well-known dummy `9876543210` ("Please enter a valid mobile
+  number"). It then ignores our prefill and asks for a mobile itself; a realistic number such as `9123456780` passes.
+- **It may offer to save the card:** after the card's Continue, an RBI "Save your card?" prompt sometimes appears.
+  "Maybe later" goes on.
+- **The bank step comes in two forms:** a popup mock bank page with Success / Failure, or an OTP screen inside
+  Checkout (4–10 digits succeed, fewer than 4 fail).
+- **It can stall after Continue:** on the card's Continue, Checkout sometimes does nothing at all: no prompt, no
+  popup, no OTP. This happened locally and on every CI attempt.
+- The card used was Razorpay's documented domestic test debit card `4100 2800 0000 1007`.
+
 Specs that book through the browser (`web/booking.spec.ts`, `web/journey.spec.ts`) use **free** services so
 they never reach the pay step.
 
