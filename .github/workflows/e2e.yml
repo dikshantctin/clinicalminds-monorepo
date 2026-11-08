@@ -17,10 +17,6 @@ on:
         description: Test backend/frontend at their latest main instead of the pinned commits
         type: boolean
         default: false
-      razorpay_sandbox:
-        description: Also pay end to end with Razorpay's test card (@razorpay-sandbox; runs nightly anyway), e.g. before a release
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -216,11 +212,7 @@ jobs:
           # the optional "validate a fresh pair" write-path specs (Razorpay TEST mode)
           E2E_RAZORPAY_KEY_ID: ${{ secrets.E2E_RAZORPAY_KEY_ID }}
           E2E_RAZORPAY_KEY_SECRET: ${{ secrets.E2E_RAZORPAY_KEY_SECRET }}
-          # @razorpay-sandbox pays through Razorpay's servers (test mode): nightly and on demand only, never a PR/push gate
-          SANDBOX: ${{ (github.event_name == 'schedule' || inputs.razorpay_sandbox) && 'run' || 'skip' }}
-        run: |
-          if [ "$SANDBOX" = run ]; then npx playwright test --project=api --project=web
-          else npx playwright test --project=api --project=web --grep-invert @razorpay-sandbox; fi
+        run: npx playwright test --project=api --project=web
 
       - name: Service logs
         if: failure()

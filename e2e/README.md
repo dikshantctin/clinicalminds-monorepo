@@ -135,9 +135,6 @@ web/                   auth, guards, navigation, desk-no-kanban (the desk has no
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
                        never on the page; Remove webhook secret clears it and is absent when none is stored;
                        a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
-                       payments-sandbox (@razorpay-sandbox, nightly + on demand, not a PR gate: a Rs 1 booking paid with
-                       Razorpay's test card; Success → "Payment received", verify answers paid for our order id, the
-                       session is paid; Failure → error toast, no verify call, the session stays unpaid, slot held),
                        mobile-shell (390 px, nothing scrolls sideways: staff shell, patient sign-in / portal /
                        set-password, public booking through slot choice, patients, a patient, sessions, tasks,
                        follow-ups),
@@ -198,12 +195,28 @@ pair" write test.
 In CI, `e2e.yml` connects the demo clinic from the monorepo secrets `E2E_RAZORPAY_KEY_ID` / `E2E_RAZORPAY_KEY_SECRET`
 (Razorpay TEST mode) and passes the same pair to Playwright, so these specs run there.
 
-The real payment is `web/payments-sandbox.spec.ts` (tag `@razorpay-sandbox`): it books a Rs 1 service on the
-public page, types Razorpay's documented domestic test card (`4100 2800 0000 1007`, any future expiry, any CVV)
-into Checkout's iframe and presses Success / Failure on Razorpay's test bank page. It calls Razorpay's servers,
-so the PR/push run leaves it out (`--grep-invert @razorpay-sandbox`); the nightly run includes it, and so does a
-manual run with the `razorpay_sandbox` box ticked (Actions → e2e → Run workflow), e.g. before a release.
-Locally: `npx playwright test --grep @razorpay-sandbox` (add `--headed` to watch). Traces are off for it.
+The actual payment cannot be automated (Razorpay Checkout is a vendor iframe), so to prove a real Rs 1 charge:
+
+1. Give a service price `1`, open `/book/<firm_code>` (or `npx playwright test web/payments.spec.ts --headed`,
+   which stops with Checkout open).
+2. Pay with the UPI id `success@razorpay` or card `4111 1111 1111 1111` (any future expiry, any CVV).
+3. The confirmation shows "Paid ₹1", Sessions shows the "Paid ₹1" badge, and the payment appears in the
+   Razorpay test dashboard under the clinic's account.
+
+Automating this payment was tried (Nov 2026) and parked: 0 of 3 CI runs passed, all stalled inside Razorpay.
+Razorpay's test Checkout is a vendor UI that does not follow one path, so a spec driving it was not reliable.
+What we learned, in case it is tried again:
+- **It is slow to start:** about 30 s from Pay to a usable form and about 60 s to the bank step (locally). On some runs it
+  never opened within 90 s.
+- **It rejects the dummy number:** Razorpay refuses the well-known dummy `9876543210` ("Please enter a valid mobile
+  number"). It then ignores our prefill and asks for a mobile itself; a realistic number such as `9123456780` passes.
+- **It may offer to save the card:** after the card's Continue, an RBI "Save your card?" prompt sometimes appears.
+  "Maybe later" goes on.
+- **The bank step comes in two forms:** a popup mock bank page with Success / Failure, or an OTP screen inside
+  Checkout (4–10 digits succeed, fewer than 4 fail).
+- **It can stall after Continue:** on the card's Continue, Checkout sometimes does nothing at all: no prompt, no
+  popup, no OTP. This happened locally and on every CI attempt.
+- The card used was Razorpay's documented domestic test debit card `4100 2800 0000 1007`.
 
 Specs that book through the browser (`web/booking.spec.ts`, `web/journey.spec.ts`) use **free** services so
 they never reach the pay step.
@@ -228,4 +241,6 @@ Also note that restarting the backend mid-run turns every request into a 401 and
 - Web: new file under `web/`; `requireWeb(); requireAuth();` for logged-in pages. Prefer
   `getByRole`/`getByLabel`; the frontend has no `data-testid`s yet — add them to new interactive
   elements rather than relying on text.
+- Booking a demo clinician at an exact time: use a fixed slot (`${uniqueDay()}T10:00:00+05:30`), never "now + N days",
+  which crosses the demo fixture's sessions at some time of day (409); `bookSession` is only for "around this time".
 - Note: the monorepo root `.gitignore` ignores `package-lock.json`; pin versions in `package.json`.
