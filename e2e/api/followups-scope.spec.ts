@@ -273,6 +273,32 @@ test.describe('follow-up cards are scoped to the clinician', () => {
       expect(n.message).not.toContain(names.theirs);
     }
   });
+  test('GET /kanban/tasks/{id}/can-see/{user_id} says whether a staff member may see the card', async () => {
+    // the assignee picker warns before giving a card to someone who could not open it
+    const canSee = async (who: Who, card: string, userId: string) => {
+      const res = await as[who].ctx.get(`/api/v1/kanban/tasks/${card}/can-see/${userId}`);
+      expect(res.status(), await res.text()).toBe(200);
+      return (await res.json()).can_see as boolean;
+    };
+    const d = 'director';
+    expect({
+      therapist: await canSee(d, cards.theirs, as.therapist.userId),
+      psych: await canSee(d, cards.theirs, as.psych.userId),
+      intern: await canSee(d, cards.theirs, as.intern.userId),
+      director: await canSee(d, cards.theirs, as.director.userId),
+      support: await canSee(d, cards.theirs, as.support.userId),
+      seenByTherapist: await canSee(d, cards.seen, as.therapist.userId), // through a session
+      unknown: await canSee(d, cards.theirs, '00000000-0000-4000-8000-000000000000'),
+    }).toEqual({
+      therapist: false, psych: true, intern: false, director: true, support: false, seenByTherapist: true, unknown: false,
+    });
+    // a clinician may ask about a card they see, never about one they don't (404, as on every card path)
+    expect(await canSee('psych', cards.theirs, as.therapist.userId)).toBe(false);
+    expect((await as.therapist.ctx.get(`/api/v1/kanban/tasks/${cards.theirs}/can-see/${as.psych.userId}`)).status()).toBe(404);
+    expect((await as.director.ctx.get(`/api/v1/kanban/tasks/${cards.theirs}/can-see/not-a-uuid`)).status()).toBe(422);
+    expect((await as.support.ctx.get(`/api/v1/kanban/tasks/${cards.theirs}/can-see/${as.psych.userId}`)).status()).toBe(403);
+  });
+
   test('a cancelled session gives no access; a live one still does', async () => {
     // runs last: it adds a fifth flagged patient, which the exact counts above don't expect
     const d = as.director.ctx;
