@@ -26,9 +26,17 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  playwright:
+  # The suite runs in 3 shards, each on its own runner with its OWN full stack (Postgres, Redis, backend, worker,
+  # seed, frontend), so shards never share demo-clinic state. Each shard writes a blob report; merge-reports joins
+  # them into one HTML report, and the `playwright` job at the end is the single pass/fail check.
+  shard:
+    name: playwright shard ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false # a red shard must not cancel the others: the merged report shows every failure
+      matrix:
+        shard: [1, 2, 3]
 
     services:
       postgres:
@@ -212,7 +220,7 @@ jobs:
           # the optional "validate a fresh pair" write-path specs (Razorpay TEST mode)
           E2E_RAZORPAY_KEY_ID: ${{ secrets.E2E_RAZORPAY_KEY_ID }}
           E2E_RAZORPAY_KEY_SECRET: ${{ secrets.E2E_RAZORPAY_KEY_SECRET }}
-        run: npx playwright test --project=api --project=web
+        run: npx playwright test --project=api --project=web --shard=${{ matrix.shard }}/3 --reporter=list,blob
 
       - name: Service logs
         if: failure()
@@ -221,11 +229,61 @@ jobs:
           tail -n 100 /tmp/worker.log || true
           tail -n 100 /tmp/frontend.log || true
 
+      # the blob holds this shard's results with their traces and screenshots; merge-reports builds the HTML from it
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          name: blob-report-${{ matrix.shard }}
+          path: e2e/blob-report
+          retention-days: 1
+
+  merge-reports:
+    needs: shard
+    if: ${{ !cancelled() }} # merge whatever the shards produced, red ones included
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4 # e2e/ only: merging needs the same @playwright/test version, not the submodules
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install Playwright (no browsers)
+        working-directory: e2e
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: blob-report-*
+          path: e2e/all-blob-reports
+          merge-multiple: true
+
+      - name: Merge the shard reports into one HTML report
+        working-directory: e2e
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - uses: actions/upload-artifact@v4
+        with:
           name: playwright-report
-          path: |
-            e2e/playwright-report
-            e2e/test-results
+          path: e2e/playwright-report
           retention-days: 14
+
+  # The one check name mergePRS (and any branch protection) reads: green only when every shard and the merge passed.
+  playwright:
+    needs: [shard, merge-reports]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All shards passed
+        env:
+          SHARDS: ${{ needs.shard.result }}
+          MERGE: ${{ needs.merge-reports.result }}
+        run: |
+          echo "shards: $SHARDS, merge-reports: $MERGE"
+          [ "$SHARDS" = success ] && [ "$MERGE" = success ]
