@@ -1,9 +1,11 @@
+import { request as pwRequest } from '@playwright/test';
 import { test, expect, requireApi, requireAuth } from '../src/fixtures';
-import { uniq } from '../src/env';
+import { env, uniq, PLATFORM_STAFF } from '../src/env';
 
 // Every clinic used to get its own connection pool (pool_size 5 + max_overflow 10) that was never closed:
 // one more idle Postgres connection per onboarded clinic, until the shared server ran out. Tenants now
 // share the one pool that /metrics/database-pools reports (backend .env: DATABASE_POOL_SIZE=5, MAX_OVERFLOW=10).
+// The metrics are platform-staff only (e2e/api/ops-endpoints.spec.ts).
 const POOL_SIZE = 5;
 const POOL_LIMIT = 15;
 const ALLOW_LISTED_PHONE = '+919876543211'; // VERIFICATION_TEST_PHONES: onboarding skips phone.email
@@ -23,7 +25,7 @@ test.describe('database connections across clinics', () => {
   requireApi();
   requireAuth();
 
-  test('three new clinics in use share one bounded pool', async ({ anon, api }) => {
+  test('@docs three new clinics in use share one bounded pool', async ({ anon }) => {
     for (let i = 0; i < 3; i++) {
       const slug = uniq('pool').toLowerCase();
       const onboarded = await anon.post('/api/v1/onboarding/complete', { data: onboarding(slug) });
@@ -35,9 +37,16 @@ test.describe('database connections across clinics', () => {
       expect((await anon.get('/api/v1/kanban/boards', { headers })).status()).toBe(200);
     }
 
-    const res = await api.get('/metrics/database-pools');
+    const signIn = await anon.post('/api/v1/auth/login', { data: PLATFORM_STAFF });
+    expect(signIn.status(), await signIn.text()).toBe(200);
+    const staff = await pwRequest.newContext({
+      baseURL: env.API_URL,
+      extraHTTPHeaders: { Authorization: `Bearer ${(await signIn.json()).access_token}` },
+    });
+    const res = await staff.get('/metrics/database-pools');
     expect(res.status()).toBe(200);
     const { pool_status } = await res.json();
+    await staff.dispose();
     expect(Object.keys(pool_status)).toEqual(['public_pool']); // no per-tenant pools
     const pool = pool_status.public_pool;
     expect(pool.size).toBe(POOL_SIZE);
