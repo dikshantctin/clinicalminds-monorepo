@@ -229,6 +229,18 @@ jobs:
           tail -n 100 /tmp/worker.log || true
           tail -n 100 /tmp/frontend.log || true
 
+      # Each shard's backend + follow-up worker logs, kept 3 days, for failures that pass on retry and leave no trace in
+      # the job log (the step above only prints a tail when the job fails). Checked: no tokens, keys, passwords or links.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: service-logs-${{ matrix.shard }}
+          path: |
+            /tmp/backend.log
+            /tmp/worker.log
+          if-no-files-found: ignore
+          retention-days: 3
+
       # the blob holds this shard's results with their traces and screenshots; merge-reports builds the HTML from it
       - uses: actions/upload-artifact@v4
         if: always()
