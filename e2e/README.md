@@ -135,6 +135,9 @@ web/                   auth, guards, navigation, desk-no-kanban (the desk has no
                        payments (admin sees the connected clinic's key id + masked hint in Settings → Payments, secret
                        never on the page; Remove webhook secret clears it and is absent when none is stored;
                        a Rs 1 booking reaches the pay step and Razorpay Checkout's iframe mounts),
+                       payments-sandbox (@razorpay-sandbox, nightly + on demand, not a PR gate: a Rs 1 booking paid with
+                       Razorpay's test card; Success → "Payment received", verify answers paid for our order id, the
+                       session is paid; Failure → error toast, no verify call, the session stays unpaid, slot held),
                        mobile-shell (390 px, nothing scrolls sideways: staff shell, patient sign-in / portal /
                        set-password, public booking through slot choice, patients, a patient, sessions, tasks,
                        follow-ups),
@@ -195,13 +198,12 @@ pair" write test.
 In CI, `e2e.yml` connects the demo clinic from the monorepo secrets `E2E_RAZORPAY_KEY_ID` / `E2E_RAZORPAY_KEY_SECRET`
 (Razorpay TEST mode) and passes the same pair to Playwright, so these specs run there.
 
-The actual payment cannot be automated (Razorpay Checkout is a vendor iframe), so to prove a real Rs 1 charge:
-
-1. Give a service price `1`, open `/book/<firm_code>` (or `npx playwright test web/payments.spec.ts --headed`,
-   which stops with Checkout open).
-2. Pay with the UPI id `success@razorpay` or card `4111 1111 1111 1111` (any future expiry, any CVV).
-3. The confirmation shows "Paid ₹1", Sessions shows the "Paid ₹1" badge, and the payment appears in the
-   Razorpay test dashboard under the clinic's account.
+The real payment is `web/payments-sandbox.spec.ts` (tag `@razorpay-sandbox`): it books a Rs 1 service on the
+public page, types Razorpay's documented domestic test card (`4100 2800 0000 1007`, any future expiry, any CVV)
+into Checkout's iframe and presses Success / Failure on Razorpay's test bank page. It calls Razorpay's servers,
+so the PR/push run leaves it out (`--grep-invert @razorpay-sandbox`); the nightly run includes it, and so does a
+manual run with the `razorpay_sandbox` box ticked (Actions → e2e → Run workflow), e.g. before a release.
+Locally: `npx playwright test --grep @razorpay-sandbox` (add `--headed` to watch). Traces are off for it.
 
 Specs that book through the browser (`web/booking.spec.ts`, `web/journey.spec.ts`) use **free** services so
 they never reach the pay step.
