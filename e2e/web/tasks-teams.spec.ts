@@ -1,6 +1,7 @@
 import { test, expect, expectNoCrash, requireWeb, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 import { bookSession } from '../src/sessions';
+import { searchFor, FOLLOWUPS_LIST } from '../src/search';
 
 test.describe('tasks (kanban) UI', () => {
   requireWeb();
@@ -64,7 +65,7 @@ test.describe('clinical follow-up queue (UI)', () => {
       // The worker syncs a few seconds after the change; the button syncs now and reloads the list
       await page.getByTestId('followup-refresh').click();
       await expect(page.getByTestId('followup-summary')).toBeVisible({ timeout: 15_000 });
-      await page.getByRole('searchbox').fill(patient.first_name);
+      await searchFor(page, page.getByRole('searchbox'), patient.first_name, FOLLOWUPS_LIST);
       const row = page.getByTestId('followup-row').filter({ hasText: `${patient.first_name} Patient` });
       await expect(row).toHaveCount(1, { timeout: 15_000 }); // exactly one: concurrent syncs must not duplicate
       await expect(row).toContainText('Missed session');

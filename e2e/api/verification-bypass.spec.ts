@@ -8,8 +8,10 @@ import { portalAccount } from '../src/portal-account';
  * The onboarding verification gate checks each channel on its own: a test phone (VERIFICATION_TEST_PHONES) skips
  * only the phone proof, a test email (VERIFICATION_TEST_EMAILS; CI lists the reserved domain "@example.com")
  * only the email proof. An admin email or phone already used by a clinic's staff is refused, without telling an
- * unproven caller whose number it is, or whether an email belongs to a clinic or to a patient (health data). Proof from phone.email itself (the channel swap, a proven duplicate phone)
- * is covered by backend pytest: e2e cannot drive the vendor.
+ * unproven caller whose number it is, or whether an email belongs to a clinic or to a patient (health data).
+ * Anything that needs a real phone.email proof (a proven duplicate phone; the sign-up attempt rules: either order,
+ * a stranger's attempt, expiry, one attempt per clinic) is covered by backend pytest (tests/test_signup_attempts.py,
+ * tests/test_verification_bypass.py): e2e cannot drive the vendor.
  */
 
 const EMAIL_REQUIRED = 'Email verification required. Please verify your email address first.';
@@ -53,6 +55,12 @@ test.describe('onboarding verification: each channel on its own', () => {
     // example.org is reserved but not on the CI list: an email nobody has proven
     const errors = await gateErrors(anon, payload(slug, { email: `admin.${slug}@example.org`, phone: ALLOW_LISTED_PHONE }));
     expect(errors).toEqual([EMAIL_REQUIRED]);
+  });
+
+  test('a made-up sign-up attempt token proves nothing', async ({ anon }) => {
+    const slug = uniq('vb').toLowerCase();
+    const data = { ...payload(slug, { email: `admin.${slug}@example.org`, phone: unprovenPhone() }), attempt_token: 'made-up' };
+    expect(await gateErrors(anon, data)).toEqual([EMAIL_REQUIRED, PHONE_REQUIRED]);
   });
 
   test('a test email does not stand in for an unproven phone', async ({ anon }) => {
