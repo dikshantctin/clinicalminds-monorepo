@@ -233,7 +233,7 @@ There is CI only, no deployment pipeline. Four GitHub Actions workflows:
 | monorepo | `.github/workflows/audit.yml` | weekly (Mon 02:30 IST), manual — not a PR gate | `pip-audit` on `backend/requirements-dev.txt`, `npm audit --audit-level=high` on `frontend` and `e2e`; red while known vulnerabilities remain, report in the run summary |
 | `backend` | `.github/workflows/ci.yml` | push to `main`, PR | Postgres service → `create_all` via `import main` → `make check` (ruff, mypy, pytest) |
 | `frontend` | `.github/workflows/ci.yml` | push to `main`, PR | `npm ci` → `make check` (lint, build — `build` runs `tsc`) |
-| monorepo | `.github/workflows/e2e.yml` | PR, push to `main` (both skip Markdown-only changes), manual; nightly 02:00 IST with backend/frontend at their latest `main` (manual: `submodule_heads`) | checkout with submodules → Postgres + Redis (rate-limit counters, Celery broker) → `alembic upgrade head` on the empty tenant DB → backend on :8000 (`create_all` for the platform DB) → follow-up worker (`celery … worker -B`) → `setup_demo_data.py` + `demo_data.py import` → `connect_demo_razorpay.py` (Razorpay TEST keys from secrets) → `vite build` + `vite preview` on :3000 → `playwright test --project=api --project=web` (de-id specs skip); report uploaded as an artifact |
+| monorepo | `.github/workflows/e2e.yml` | PR, push to `main` (both skip Markdown-only changes), manual; nightly 02:00 IST with backend/frontend at their latest `main` (manual: `submodule_heads`) | 3 parallel shards (`--shard=n/3`), **each with its own full stack**: checkout with submodules → Postgres + Redis (rate-limit counters, Celery broker) → `alembic upgrade head` on the empty tenant DB → backend on :8000 (`create_all` for the platform DB) → follow-up worker (`celery … worker -B`) → `setup_demo_data.py` + `demo_data.py import` → `connect_demo_razorpay.py` (Razorpay TEST keys from secrets) → `vite build` + `vite preview` on :3000 → `playwright test --project=api --project=web --shard=n/3` (de-id specs skip; blob report per shard) → `merge-reports` uploads one `playwright-report` artifact → `playwright` job: the single pass/fail check (green only when every shard and the merge passed) |
 
 Merge order for a change spanning repos: backend PR (green) → frontend PR (green) → monorepo PR that bumps the
 submodule pointers (its e2e runs against exactly those commits). A pointer must name a commit on the submodule's
@@ -252,6 +252,8 @@ Rules learned the hard way:
   Checkout 403 on the submodules = token lacks access; `could not read Username` = the secret holds a revoked token.
 - **Secrets `E2E_RAZORPAY_KEY_ID` / `E2E_RAZORPAY_KEY_SECRET`** (Razorpay TEST mode) connect the demo clinic's gateway
   in `e2e.yml` and drive the payments specs; without them those specs skip. Never echo them (traces are off for the specs that type them).
+- **Shards share nothing**: a spec must create every precondition it needs (e.g. a patient on the test phone), never rely on
+  another spec having run first in the same run; `npx playwright test --shard=2/3` reproduces one shard locally.
 - Read failures with `gh run view <id> -R dikshantctin/<repo> --log-failed`; re-run with `gh run rerun <id>`.
 - Known flaky e2e specs (shared demo data, parallel workers): `api/patients.spec.ts` stats-vs-list totals and
   `api/payments.spec.ts` slot hold. A failure there is re-run once, not "fixed" by loosening asserts.
