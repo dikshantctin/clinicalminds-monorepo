@@ -1,6 +1,7 @@
 import { test, expect, expectNoCrash, requireWeb, requireAuth } from '../src/fixtures';
 import { uniq } from '../src/env';
 import { backdate, bookSession, uniqueDay } from '../src/sessions';
+import { searchFor, SESSIONS_LIST } from '../src/search';
 
 test.describe('sessions UI', () => {
   requireWeb();
@@ -40,7 +41,7 @@ test.describe('sessions UI', () => {
       ).json();
       expect((await api.post(`/api/v1/sessions/${session.id}/start`)).status()).toBe(200);
       await page.goto('/dashboard/sessions');
-      await page.getByRole('searchbox', { name: 'Search sessions' }).fill(patient.first_name);
+      await searchFor(page, page.getByRole('searchbox', { name: 'Search sessions' }), patient.first_name, SESSIONS_LIST);
       const row = page.locator('tr', { hasText: patient.first_name });
       await expect(row.getByTestId('session-end')).toBeVisible();
       await row.getByTestId('session-end').click();
@@ -91,7 +92,7 @@ test.describe('sessions UI', () => {
       await backdate(api, session.id); // no-show needs a session whose time has come
       await page.goto('/dashboard/sessions');
       // the list is paged on the server: search narrows it to this patient
-      await page.getByRole('searchbox', { name: 'Search sessions' }).fill(patient.first_name);
+      await searchFor(page, page.getByRole('searchbox', { name: 'Search sessions' }), patient.first_name, SESSIONS_LIST);
       const row = page.locator('tr', { hasText: patient.first_name });
       await expect(row).toBeVisible();
       await row.getByTestId('session-no-show').click();
@@ -150,7 +151,7 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
       }
       await page.goto('/dashboard/sessions');
       await expect(page.getByText('Avg Duration')).toHaveCount(0);
-      await page.getByRole('searchbox', { name: 'Search sessions' }).fill(patient.first_name);
+      await searchFor(page, page.getByRole('searchbox', { name: 'Search sessions' }), patient.first_name, SESSIONS_LIST);
       const pager = page.getByTestId('sessions-pagination');
       const rows = page.getByTestId('sessions-table').locator('tbody tr');
       await expect(pager).toContainText('Showing 1–20 of 22');
@@ -171,7 +172,7 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
         await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: `${day}T${hhmm}:00+05:30`, session_type } });
       }
       await page.goto('/dashboard/sessions');
-      await page.getByRole('searchbox', { name: 'Search sessions' }).fill(patient.first_name);
+      await searchFor(page, page.getByRole('searchbox', { name: 'Search sessions' }), patient.first_name, SESSIONS_LIST);
       const rows = page.getByTestId('sessions-table').locator('tbody tr');
       await expect(rows).toHaveCount(2, { timeout: 15_000 });
       await expect(page.getByTestId('sessions-pagination')).toContainText('of 2');
@@ -192,7 +193,7 @@ test.describe('sessions UI: paging, types, edit, detail, time zone', () => {
       const day = uniqueDay();
       const session = await (await api.post('/api/v1/sessions/', { data: { patient_id: patient.id, scheduled_at: `${day}T10:00:00+05:30` } })).json();
       await page.goto('/dashboard/sessions');
-      await page.getByRole('searchbox', { name: 'Search sessions' }).fill(patient.first_name);
+      await searchFor(page, page.getByRole('searchbox', { name: 'Search sessions' }), patient.first_name, SESSIONS_LIST);
       const row = page.locator('tr', { hasText: patient.first_name });
       await row.getByTestId('session-edit').click();
       const dialog = page.getByTestId('session-edit-dialog');
